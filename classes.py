@@ -2,8 +2,10 @@
 
 import pandas as pd
 import numpy as np
+import re
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.utils.cell import quote_sheetname
 
 filepath = "C:\\Users\\isabe\\Downloads\\"
 
@@ -16,9 +18,11 @@ class Ordini:
 
     def load_data(self):
         # Load the CSV data
-        self.df = pd.read_csv(self.filepath + "Ordini LIL.csv", 
-                              dtype={'Lineitem sku': 'string', 'Device ID': 'string', 'Id': 'string', 
-                                     "Tags": "string", "Next Payment Due At": "string"})
+        # self.df = pd.read_csv(self.filepath + "Ordini LIL.csv", 
+        #                       dtype={'Lineitem sku': 'string', 'Device ID': 'string', 'Id': 'string', 
+        #                              "Tags": "string", "Next Payment Due At": "string"})
+        self.df = pd.read_excel(self.filepath + "Vendite Agosto v3.xlsx", sheet_name="Generale LIL")
+        
         # Forward-fill NaN values for the same Name
         self.df[self.df.columns] = self.df.groupby('Name')[self.df.columns].ffill()
 
@@ -185,12 +189,6 @@ class Ordini:
 
         return self.df
     
-
-
-def update_payment_info(self, payment_info_list, new_info):
-        payment_info_list.append(new_info)
-        return payment_info_list
-
 
 
 #PAGAMENTI: PRENDE IN ENTRATA I VARI METODI DI PAGAMENTO, GLI ORDINI PULITI E TROVA I MATCH. 
@@ -371,7 +369,8 @@ class PaypalMatcher(PaymentMatcher):
         return row["Lordo"]
 
     def match(self):
-        df_full = pd.read_csv(filepath+"Paypal.csv")
+        # df_full = pd.read_csv(filepath+"Paypal.csv")
+        df_full = pd.read_csv(filepath+"Paypal 8 2024.csv")
         df_full['Lordo'] = df_full['Lordo'].str.replace('.', '', regex=False)  # Remove periods (thousands separator)
         df_full['Lordo'] = df_full['Lordo'].str.replace(',', '.', regex=False)  # Replace commas with periods (decimal separator)
         df_full['Lordo'] = pd.to_numeric(df_full['Lordo'], errors='coerce')  # Convert to numeric, coercing errors to NaN        
@@ -406,19 +405,44 @@ class PaypalMatcher(PaymentMatcher):
 
         return df_check, df_ordini, df_full
     
-
 #matcher del bonifico
 class BonificoMatcher(PaymentMatcher):
     def get_amount(self, row, tipo):
         return row["Importo"]
+    
+    def find_header_row(self, excel_file, column_name):
+
+        df_sample = pd.read_excel(excel_file)  # Adjust number as needed
+        header_row = 0
+
+        # Find the row containing the known column name
+        for idx, row in df_sample.iterrows():
+            if column_name in row.values:
+                header_row = idx
+                break
+
+        df = pd.read_excel(excel_file, header=header_row)
+                
+        return df
+    
 
     def match(self):
-        operations_to_exclude = ["Bonifico Disposto Da Stripe Technology Europe Ltd", "Bonifico Disposto Da STRIPE", "Bonifico In Euro Da Paesi Ue/sepa", 
-                                "Bonifico Disposto Da PayPal Europe S.a.r.l. Et Cie S.C.A", "Bonifico Disposto Da Satispay Europe S.A.", "Bonifico Disposto Da Retail Group Spa",
-                                "Versamento Contanti Su Sportello Automatico", "Bonifico Disposto Da LA RINASCENTE S.P.A.", ]
 
-        df_full = pd.read_excel(filepath+"Intesa 9.xlsx", skiprows=19)
-        df_full = df_full[~df_full.iloc[:, 1].isin(operations_to_exclude)]
+        operations_patterns = [
+            r'stripe',
+            r'paypal',
+            r'satispay',
+            r'scalapay',
+            r'rinascente',
+            r'paesi ue',
+            r'retail group',
+            r'sportello automatico',
+        ]
+
+        # df_full =  self.find_header_row(filepath+"Intesa 9.xlsx", "Importo")
+        df_full =  self.find_header_row(filepath+"Bonifici 8 2024.xlsx", "Importo")
+        mask = ~df_full['Operazione'].str.contains('|'.join(operations_patterns), case=False, regex=True, na=False)
+        df_full = df_full[mask]        
         df_full["Data_datetime"] = pd.to_datetime(df_full['Data']).dt.tz_localize(None)
 
         df_ordini = self.df_ordini[self.df_ordini['Payment Method'].str.contains('Bonifico', case=True, na=False)]
@@ -429,8 +453,13 @@ class BonificoMatcher(PaymentMatcher):
         df_check = self.apply_checks(df_check, "bonifico")
 
         df_check['Days_difference'] = ((df_check['Data_datetime'] - df_check['Paid_datetime']).dt.days).abs() 
-        min_days_difference = df_check.groupby('Name')['Days_difference'].transform(lambda x: x.min())
-        df_check = df_check[(df_check['Days_difference'] == min_days_difference) | df_check['Days_difference'].isna()]
+    
+        # Using .values for direct comparison without index dependency
+        mask = df_check['Days_difference'].values == df_check.groupby('Name')['Days_difference'].transform('min').values
+        df_check = df_check[mask | df_check['Days_difference'].isna()]
+
+        # min_days_difference = df_check.groupby('Name')['Days_difference'].transform(lambda x: x.min())
+        # df_check = df_check[(df_check['Days_difference'] == min_days_difference) | df_check['Days_difference'].isna()]
 
         # Apply check_discounts function directly for each row and modify df_check
         for _, row in df_check.iterrows():
@@ -451,7 +480,6 @@ class BonificoMatcher(PaymentMatcher):
 
         return df_check, df_ordini, df_full
 
-
 #matcher di qromo
 class QromoMatcher(PaymentMatcher):
     def get_amount(self, row, tipo):
@@ -460,6 +488,7 @@ class QromoMatcher(PaymentMatcher):
 
     def match(self, mese, anno):
         df_full = pd.read_csv(filepath+"qromo.csv")
+        # df_full = pd.read_csv(filepath+"Qromo 8 2024.csv")
         if mese < 10:
             data_interesse = str(anno)+"-0"+str(mese)
         else:
@@ -490,8 +519,13 @@ class QromoMatcher(PaymentMatcher):
 
         df_check = self.apply_checks(df_check, "qromo")
 
-        df_check['Time_difference'] = (df_check['Paid_datetime'] - df_check['Data_datetime']).abs()
-        df_check = df_check.loc[df_check.groupby(['Name', "Lineitem name", 'CHECK'])['Time_difference'].idxmin()]
+        df_check['Time_difference'] = (df_check['Data_datetime'] - df_check['Paid_datetime']).abs() 
+    
+        # Using .values for direct comparison without index dependency
+        mask = df_check['Time_difference'].values == df_check.groupby('Name')['Time_difference'].transform('min').values
+        df_check = df_check[mask | df_check['Time_difference'].isna()]
+
+        # df_check = df_check.loc[df_check.groupby(['Name', "Lineitem name", 'CHECK'])['Time_difference'].idxmin()]
 
         names_with_vero = df_check[df_check['CHECK'] == 'VERO']['Name'].unique()
         df_check = df_check[~((df_check['CHECK'] == 'FALSO') & (df_check['Name'].isin(names_with_vero)))]
@@ -520,7 +554,8 @@ class ShopifyMatcher(PaymentMatcher):
         return row["Amount"]
 
     def match(self):
-        df_full = pd.read_csv(self.filepath + "Shopify LIL.csv")
+        # df_full = pd.read_csv(self.filepath + "Shopify LIL.csv")
+        df_full = pd.read_csv(self.filepath + "Shopify LIL 8 2024.csv")
         df = df_full.groupby('Order', as_index=False)['Amount'].sum()
 
         df_ordini = self.df_ordini[self.df_ordini['Payment Method'].str.contains('Shopify', case=False, na=False)]
@@ -551,7 +586,8 @@ class ScalapayMatcher(PaymentMatcher):
         return row["Import lordo"]
 
     def match(self):
-        df_full = pd.read_csv(filepath + "scalapay 9.2023.csv")
+        # df_full = pd.read_csv(filepath + "scalapay 9.2023.csv")
+        df_full = pd.read_csv(filepath + "scalapay 8 2024.csv")
         df = df_full[["Merchant ID", "Tipo", "Data acquisto/rimborso", "Import lordo"]]
 
         df_ordini = self.df_ordini[self.df_ordini['Payment Method'].str.contains('Scalapay', case=False, na=False)]
@@ -648,11 +684,13 @@ class MatcherRunner:
         self.matchers = matchers
         self.df_ordini_iniziale = df_ordini_iniziale
         self.filename = filename
+        self.df_ordini_all = None
 
     #runna matchers e crea excel
     def run_all_matchers(self, mese=9, anno=2024):
         qromo_matcher = next((matcher for matcher in self.matchers if isinstance(matcher, QromoMatcher)), None)
         all_dfs = []
+        check_dfs = []
         
         with pd.ExcelWriter(self.filename, engine='openpyxl', mode='w') as writer:
             for matcher in self.matchers:
@@ -663,6 +701,7 @@ class MatcherRunner:
 
                 # Append the DataFrame to our list
                 all_dfs.append(df_ordini)
+                check_dfs.append(df_check)
 
                 # Write each returned `df` (the additional DataFrame) as a new sheet
                 payment_name = matcher.__class__.__name__.replace("Matcher", "")
@@ -671,8 +710,6 @@ class MatcherRunner:
             # Concatenate all DataFrames for final processing
             df_ordini_payments = pd.concat(all_dfs, ignore_index=True)
             df_ordini_payments = df_ordini_payments[df_ordini_payments["Name"].notna()]
-
-            # Process the Check column within each Name group
             df_ordini_payments = df_ordini_payments.groupby("Name", group_keys=False).apply(self.process_check_groups)
 
             # Check for unmatched names
@@ -680,24 +717,47 @@ class MatcherRunner:
             unmatched_rows = self.df_ordini_iniziale[~self.df_ordini_iniziale["Name"].isin(unique_names_payments)]
 
             # Concatenate payments and unmatched rows
-            df_ordini_all = pd.concat([df_ordini_payments, unmatched_rows], ignore_index=True)
-            df_ordini_all['Total'] = df_ordini_all.groupby('Name')['Total'].transform(lambda x: x.where(x.index == x.index[0], np.nan))
+            self.df_ordini_all = pd.concat([df_ordini_payments, unmatched_rows], ignore_index=True)
+            self.df_ordini_all['Total'] = self.df_ordini_all.groupby('Name')['Total'].transform(lambda x: x.where(x.index == x.index[0], np.nan))
+            self.df_ordini_all = self.df_ordini_all.drop_duplicates(subset=['Name', 'Lineitem name'])
 
             # Checking for inconsistencies in "Total"
-            inconsistent_totals = df_ordini_all.groupby('Name').filter(lambda group: group['Total'].nunique() > 1)
+            inconsistent_totals = self.df_ordini_all.groupby('Name').filter(lambda group: group['Total'].nunique() > 1)
             
             if not inconsistent_totals.empty:
                 print(f"Inconsistent 'Total' values detected for the following 'Names':\n{inconsistent_totals}")
             else:
                 print("All 'Names' have consistent 'Total' values.")
 
+            print()
+
             # Write the concatenated data to the main sheet
-            df_ordini_all.to_excel(writer, sheet_name='Ordini LIL', index=False)
+            self.df_ordini_all.to_excel(writer, sheet_name='Ordini LIL', index=False)
 
         # Create the summary table in a new sheet
         self.create_summary_table()
+        self.create_daily_summary_table()
+
+        # First, create a list of all unique names that have CHECK == "VERO" across all dataframes
+        all_vero_names = set()  # using a set for unique values
+        for df in check_dfs:
+            vero_names = df[df['CHECK'] == "VERO"]['Name'].dropna().unique()
+            all_vero_names.update(vero_names)
+
+        # Now process each dataframe
+        for df in check_dfs:
+            mask = (
+                (~df['Name'].isin(all_vero_names)) | 
+                (df['Name'].isna()) |
+                ((df['Name'].isin(all_vero_names)) & (df['CHECK'] == "VERO"))
+            )
+            
+            # Apply the mask and print
+            filtered_df = df[mask]
+            filtered_df = filtered_df.drop_duplicates(subset=['Name', 'Lineitem name'])
+            display(filtered_df[filtered_df["CHECK"] != "VERO"])
         
-        return df_check, df_ordini_all, df
+        return df_check, self.df_ordini_all, df
 
     #check
     def process_check_groups(self, group):
@@ -706,9 +766,8 @@ class MatcherRunner:
         else:
             return group
 
-    #crea sheet Totale
+
     def create_summary_table(self):
-        # Create a new workbook for the summary or load an existing one
         try:
             workbook = load_workbook(self.filename)
         except FileNotFoundError:
@@ -721,7 +780,7 @@ class MatcherRunner:
         for row in summary_sheet.iter_rows(min_row=1, max_col=10, max_row=summary_sheet.max_row):
             for cell in row:
                 cell.value = None
-
+                
         # Write headers for payments
         summary_sheet['A1'] = 'Payments'
         summary_sheet['B1'] = 'LIL'
@@ -754,25 +813,125 @@ class MatcherRunner:
         # Add the "Total" row for payments
         summary_sheet[f'A{row}'] = 'Totale'
         summary_sheet[f'B{row}'] = f'=SUM(B2:B{row-1})'  # Adjust row number based on the last payment method
-        summary_sheet[f'C{row}'] = f'=SUM(C2:C{row-2})'  # Sum all CHECK totals
 
         # Leave some columns between the two tables (e.g., start the location table at column E)
         summary_sheet['F1'] = 'Locations'  # Header for the Locations table
         summary_sheet['G1'] = 'Incasso'         # Header for LIL sums
         summary_sheet['H1'] = 'Ordini'    # Header for the Locations table
         summary_sheet['I1'] = 'Items'         # Header for LIL sums
-        summary_sheet['J1'] = 'Items Gioielli'
+        summary_sheet['J1'] = 'Oggetti per ordine'  
 
-        # Title mapping for locations
-        title_of_locations = ["Firgun House", "LIL house", "LIL House London"]
+        # Create list of strings to exclude
+        exclude_strings = [
+            "Luxury Pack",
+            "Engraving",
+            "E-gift",
+            "Repair",
+            "Whatever Tote",
+            "Piercing Party",
+            "LIL Bag"
+        ]
 
-        # Write location methods to the summary sheet
-        loc_row = 2  # Start from the second row for locations
-        for location_label in title_of_locations:
-            summary_sheet[f'F{loc_row}'] = location_label
-            summary_sheet[f'G{loc_row}'] = f'=SUMIFS(\'Ordini LIL\'!$L:$L, \'Ordini LIL\'!$BB:$BB, "{location_label}")'
-            summary_sheet[f'H{loc_row}'] = f'=COUNTA(UNIQUE(FILTER(\'Ordini LIL\'!A2:A1030; \'Ordini LIL\'!BB2:BB1030="{location_label}")))'
-             # summary_sheet[f'H{loc_row}'] = f'=IFERROR(@__xludf.DUMMYFUNCTION("COUNTA(UNIQUE(FILTER(\'Ordini LIL\'!A:A, \'Ordini LIL\'!BB:BB = "{location_label}")))");326)'
+        # Create the filter using | (OR) operator between all patterns
+        df_ordini_gioielli = self.df_ordini_all[~self.df_ordini_all['Lineitem name'].str.contains('|'.join(exclude_strings), case=False, na=False)]
+
+        # First, let's create the groupby object with multiple aggregations
+        location_stats = df_ordini_gioielli.groupby('Location').agg({'Name': 'nunique',  # Count unique names
+                                                                    'Lineitem quantity': 'sum'      # Sum of totals
+                                                                    }).reset_index()
+
+        # Convert to dictionary for easier access
+        stats_dict = location_stats.set_index('Location').to_dict()
+
+        # Example usage for locations
+        title_of_locations = df_ordini_gioielli["Location"].unique()
+        
+        for idx, location_label in enumerate(title_of_locations, start=2):            
+            # Set the formula in the cell
+            summary_sheet[f'F{idx}'] = location_label
+        
+            # Set other formulas as needed
+            summary_sheet[f'G{idx}'] = (
+                f'=SUMIFS(\'Ordini LIL\'!$L:$L, '
+                f'\'Ordini LIL\'!$BB:$BB, "{location_label}")'
+            )
+
+            #numero ordini per location
+            #numero oggetti per location
+            unique_orders = stats_dict['Name'].get(location_label, 0)
+            items_quantity = stats_dict['Lineitem quantity'].get(location_label, 0)
+
+            # Write the scalar values
+            summary_sheet[f'H{idx}'] = unique_orders 
+            summary_sheet[f'I{idx}'] = items_quantity 
+
+            summary_sheet[f'J{idx}'] = (f'=I{idx}/H{idx}')
+        
+        
+        # Add the "Total" row for locations
+        summary_sheet[f'F{idx+1}'] = 'Totale'
+        summary_sheet[f'G{idx+1}'] = f'=SUM(G2:G{idx})'  # Adjust row number based on the last location method
+        summary_sheet[f'H{idx+1}'] = f'=SUM(H2:H{idx})'
+        summary_sheet[f'I{idx+1}'] = f'=SUM(I2:I{idx})'
+        summary_sheet[f'J{idx+1}'] = f'=I{idx+1}/H{idx+1}'
+
+        # Save the workbook
+        workbook.save(self.filename)
+
+    def create_daily_summary_table(self):
+        try:
+            workbook = load_workbook(self.filename)
+        except FileNotFoundError:
+            workbook = Workbook()
+
+        # Create or select the sheet for the daily summary
+        daily_sheet = workbook['Totale_daily'] if 'Totale_daily' in workbook.sheetnames else workbook.create_sheet('Totale_daily')
+
+        # Clear previous content in the daily sheet
+        for row in daily_sheet.iter_rows(min_row=1, max_col=10, max_row=daily_sheet.max_row):
+            for cell in row:
+                cell.value = None
+
+        # Write headers
+        daily_sheet['A1'] = 'Giorno'
+        daily_sheet['B1'] = 'Paese'
+        daily_sheet['C1'] = 'Incasso'
+
+
+        # Filter the dataframe same as before
+        # Extract just the date part (without time) from 'Paid at'
+        self.df_ordini_all['Paid at'] = pd.to_datetime(self.df_ordini_all['Paid at'])
+        self.df_ordini_all['Data'] = self.df_ordini_all['Paid at'].dt.date
+
+        df_ordini_locations = self.df_ordini_all[self.df_ordini_all["Location"].isin(["Firgun House", "LIL house", "LIL House London"])]
+
+        daily_country_totals = df_ordini_locations.groupby(['Data', 'Shipping Country'])['Total'].sum().reset_index()
+        daily_country_totals = daily_country_totals.sort_values(['Data', 'Shipping Country'])
+        daily_country_totals = daily_country_totals.rename(columns={'Shipping Country': 'Country'})
+
+        for idx, row in enumerate(daily_country_totals.itertuples(), start=2):
+            daily_sheet[f'A{idx}'] = row.Data
+            daily_sheet[f'B{idx}'] = row.Country
+            daily_sheet[f'C{idx}'] = row.Total
+
+        # Add totals row at the bottom
+        last_row = idx + 2
+        daily_sheet[f'C{last_row}'] = f'=SUM(C2:C{idx})'
+    
+        # Save the workbook
+        workbook.save(self.filename)
+
+
+        
+
+        # #
+        # # Write location methods to the summary sheet
+        # loc_row = 2  # Start from the second row for locations
+        # for location_label in title_of_locations:
+        #     summary_sheet[f'F{loc_row}'] = location_label
+        #     summary_sheet[f'G{loc_row}'] = f'=SUMIFS(\'Ordini LIL\'!$L:$L, \'Ordini LIL\'!$BB:$BB, "{location_label}")'
+        #     summary_sheet[f'H{loc_row}'] = f'=COUNTA(UNIQUE(FILTER(\'Ordini LIL\'!A2:A1030; \'Ordini LIL\'!BB2:BB1030="{location_label}")))'
+        #      # summary_sheet[f'H{loc_row}'] = f'=IFERROR(@__xludf.DUMMYFUNCTION("COUNTA(UNIQUE(FILTER(\'Ordini LIL\'!A:A, \'Ordini LIL\'!BB:BB = "{location_label}")))");326)'
         # summary_sheet[f'H{loc_row}'] = (
         #     f'=SUM(IF(FREQUENCY(IF(\'Ordini LIL\'!BB:BB="{location_label}", MATCH(\'Ordini LIL\'!A:A, \'Ordini LIL\'!A:A, 0)), ROW(\'Ordini LIL\'!A:A)-ROW(\'Ordini LIL\'!A$1)+1), 1))'
         # )
@@ -783,13 +942,6 @@ class MatcherRunner:
         # summary_sheet[f'J{loc_row}'] = (
         #     f'=SUMPRODUCT((\'Ordini LIL\'!BB:BB = "{location_label}") * (ISERROR(SEARCH({"Luxury Pack","Engraving","E-gift","Repair","Whatever Tote","Piercing Party","LIL Bag"}, \'Ordini LIL\'!R:R))) * (\'Ordini LIL\'!Q:Q))'
         # )
-            loc_row += 1  # Increment the row for the next location method
 
-        # Add the "Total" row for locations
-        summary_sheet[f'F{loc_row}'] = 'Totale'
-        summary_sheet[f'G{loc_row}'] = f'=SUM(G2:G{loc_row-1})'  # Adjust row number based on the last location method
-        summary_sheet[f'H{loc_row}'] = f'=SUM(H2:H{loc_row-1})'
 
-        # Save the workbook
-        workbook.save(self.filename)
 
