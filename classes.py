@@ -7,31 +7,108 @@ import re
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment
 
-filepath = "C:\\Users\\isabe\\Downloads\\"
+# filepath = "C:\\Users\\isabe\\Downloads\\"
+
+def run(uploaded_ordini_files, uploaded_other_files, mese, anno):
+    print("Starting run function")
+    
+    #ordini
+    ordini_processor = Ordini(uploaded_ordini_files, mese = mese)
+    ordini = ordini_processor.preprocess()
+
+    try:
+        #run matchers
+        shopify_matcher = ShopifyMatcher(uploaded_other_files, df_ordini=ordini)
+        scalapay_matcher = ScalapayMatcher(uploaded_other_files, df_ordini=ordini)
+        satispay_matcher = SatispayMatcher(uploaded_other_files, df_ordini=ordini)
+        paypal_matcher = PaypalMatcher(uploaded_other_files, df_ordini=ordini)
+        qromo_matcher = QromoMatcher(uploaded_other_files, df_ordini=ordini)
+        bonifico_matcher = BonificoMatcher(uploaded_other_files, df_ordini=ordini)
+
+        # Create the matchers list
+        matchers = [
+            shopify_matcher,
+            scalapay_matcher,
+            satispay_matcher,
+            paypal_matcher,
+            qromo_matcher,
+            bonifico_matcher
+        ]
+
+       #excel
+        runner = MatcherRunner(matchers, ordini)
+        print("Runner created")
+        
+        result = runner.run_all_matchers(mese, anno)
+        print(f"Result type: {type(result)}")
+        print(f"Result info:", result.info() if hasattr(result, 'info') else "No info")
+        
+        return result
+    except Exception as e:
+        print(f"Error in run: {str(e)}")
+        raise e
+
+
+    # #excel
+    # runner = MatcherRunner(matchers, ordini)
+    # final_df = runner.run_all_matchers(mese, anno)
+    # # df_check_all, df_ordini_all, df = runner.run_all_matchers(mese=mese, anno= anno)
 
 
 #CLASSE CHE PRENDE IN ENTRATA FILE DI ORDINI, LO PULISCE E LO RESTITUISCE PULITO
 class Ordini:
-    def __init__(self, filepath, mese):
-        self.filepath = filepath
+    def __init__(self, uploaded_files, mese):
+        """
+        uploaded_files: A dictionary where keys are file names and values are UploadedFile objects
+        mese: The month of interest
+        """
+        self.uploaded_files = uploaded_files  # Dictionary of UploadedFile objects
         self.df = None  # This will hold the DataFrame once loaded
         self.mese = mese
 
     def load_data(self):
-        if self.mese == 8:
-        # Load the CSV data
-            self.df = pd.read_excel(self.filepath + "Vendite Agosto v3.xlsx", sheet_name="Generale LIL")
-            self.df = self.df[self.df["Name"].str.startswith("#")]
-            self.df["Brand"] = "LIL Milan"
-        elif self.mese == 9:
-            lil = pd.read_csv(self.filepath + "Ordini LIL.csv", dtype={'Lineitem sku': 'string', 'Device ID': 'string', 'Id': 'string', "Tags": "string", "Next Payment Due At": "string"})
-            agee = pd.read_csv(self.filepath + "Ordini AGEE 9.csv", dtype={'Lineitem sku': 'string', 'Device ID': 'string', 'Id': 'string', "Tags": "string", "Next Payment Due At": "string"})
+    
+        lil_file = self.uploaded_files.get("Ordini LIL")
+        agee_file = self.uploaded_files.get("Ordini AGEE")
+        
+        # assicurarsi che esista
+        if lil_file:
+            lil = pd.read_csv(lil_file, dtype={'Lineitem sku': 'string', 'Device ID': 'string', 'Id': 'string', "Tags": "string", "Next Payment Due At": "string"})
             lil["Brand"] = "LIL Milan"
+        else:
+            lil = pd.DataFrame()  # or handle the missing file as needed
+
+        # assicurarsi che esista
+        if agee_file:
+            agee = pd.read_csv(agee_file, dtype={'Lineitem sku': 'string', 'Device ID': 'string', 'Id': 'string', "Tags": "string", "Next Payment Due At": "string"})
             agee["Brand"] = "AGEE"
-            self.df = pd.concat([lil, agee], ignore_index=True)
-        elif self.mese == 10:
-            self.df = pd.read_csv(self.filepath + "ordini2.csv", dtype={'Lineitem sku': 'string', 'Device ID': 'string', 'Id': 'string', "Tags": "string", "Next Payment Due At": "string"})
-            self.df["Brand"] = "LIL Milan"
+        else:
+            agee = pd.DataFrame()  # or handle the missing file as needed
+
+        # Concatenate dataframes if both are available
+        self.df = pd.concat([lil, agee], ignore_index=True) if len(lil) > 0 or len(agee) > 0 else pd.DataFrame()
+
+# class Ordini:
+#     def __init__(self, filepath, mese):
+#         self.filepath = filepath
+#         self.df = None  # This will hold the DataFrame once loaded
+#         self.mese = mese
+
+#     def load_data(self):
+#         if self.mese == 8:
+#         # Load the CSV data
+#             self.df = pd.read_excel(self.filepath + "Vendite Agosto v3.xlsx", sheet_name="Generale LIL")
+#             self.df = self.df[self.df["Name"].str.startswith("#")]
+#             self.df["Brand"] = "LIL Milan"
+#         elif self.mese == 9:
+#             lil = pd.read_csv(self.filepath + "Ordini LIL.csv", dtype={'Lineitem sku': 'string', 'Device ID': 'string', 'Id': 'string', "Tags": "string", "Next Payment Due At": "string"})
+#             agee = pd.read_csv(self.filepath + "Ordini AGEE 9.csv", dtype={'Lineitem sku': 'string', 'Device ID': 'string', 'Id': 'string', "Tags": "string", "Next Payment Due At": "string"})
+#             lil["Brand"] = "LIL Milan"
+#             agee["Brand"] = "AGEE"
+#             self.df = pd.concat([lil, agee], ignore_index=True)
+#         elif self.mese == 10:
+#             self.df = pd.read_csv(self.filepath + "ordini2.csv", dtype={'Lineitem sku': 'string', 'Device ID': 'string', 'Id': 'string', "Tags": "string", "Next Payment Due At": "string"})
+#             self.df["Brand"] = "LIL Milan"
         
         # Forward-fill NaN values for the same Name
         self.df[self.df.columns] = self.df.groupby('Name')[self.df.columns].ffill()
@@ -237,8 +314,8 @@ class Ordini:
 class PaymentMatcher:
     payment_info_list = [] 
 
-    def __init__(self, filepath, df_ordini):
-        self.filepath = filepath
+    def __init__(self, uploaded_files, df_ordini):
+        self.uploaded_files = uploaded_files
         self.df_ordini = df_ordini
 
     #fare check se va controllato
@@ -271,7 +348,7 @@ class PaymentMatcher:
                         (df_check["Lineitem compare at price"] == 0)]["Name"]
     
         # If nomi is empty, return df_check unchanged
-        if nomi.empty:
+        if len(nomi) == 0:
             return df_check
         
         for name, group in df_check.groupby('Name'):
@@ -483,7 +560,7 @@ class PaypalMatcher(PaymentMatcher):
         return row["Lordo"]
 
 
-    def match(self, mese):
+    def match(self):
 
         get_valute = {
             "USD": 0.919548,
@@ -504,20 +581,20 @@ class PaypalMatcher(PaymentMatcher):
             "AUD": 0.609449,
             "ILS": 0.247803
         }
-            
-        if mese == 8:
-            df_full = pd.read_csv(filepath+"Paypal 8 2024.csv")
-        elif mese == 9:
-            df_full = pd.read_csv(filepath+"Paypal.csv")
-        elif mese == 10:
-            df_full = pd.read_csv(filepath+"paypal 10.csv")
+
+        paypal_file = self.uploaded_files.get("Paypal")
         
+        if not paypal_file:
+            raise SkipMatcherException("Non ci sono pagamenti con Paypal")
+        
+        # Process the file and proceed with matching
+        df_full = pd.read_csv(paypal_file)
+
         df_full['Lordo'] = df_full['Lordo'].str.replace('.', '', regex=False)  # Remove periods (thousands separator)
         df_full['Lordo'] = df_full['Lordo'].str.replace(',', '.', regex=False)  # Replace commas with periods (decimal separator)
         df_full['Lordo'] = pd.to_numeric(df_full['Lordo'], errors='coerce')  # Convert to numeric, coercing errors to NaN        
         df_full = df_full[df_full["Tipo"].isin(["Pagamento Express Checkout", "Rimborso di pagamento"])]
         df_full = df_full[~df_full["Nome"].str.contains("propac", case=False, na=False)] #ha detto di toglierlo
-
 
         df = df_full[['Data',"Nome", "Tipo", 'Valuta', 'Lordo', 'N° ordine commerciante', "Titolo oggetto"]]
         df = df.groupby('N° ordine commerciante', as_index=False).agg({'Lordo': 'sum',        # Sum the 'Lordo' values
@@ -546,7 +623,6 @@ class PaypalMatcher(PaymentMatcher):
 
         df_check = self.check_double_payments(df_check, "Lordo")
 
-        
         df_check["Payment Method"] = df_check["Payment Method"].astype(str)
         mask = (df_check["Payment Method"].str.contains(r'\+') 
                 & (df_check["CHECK"] == "VERO"))
@@ -579,10 +655,8 @@ class BonificoMatcher(PaymentMatcher):
                 
         return df
     
-    def match(self, mese):
-        if mese == 10:
-            raise SkipMatcherException("Non ci sono bonifici")
-
+    def match(self):
+        
         operations_patterns = [
             r'stripe',
             r'paypal',
@@ -593,12 +667,14 @@ class BonificoMatcher(PaymentMatcher):
             r'retail group',
             r'sportello automatico',
         ]
-
-        if mese == 8:
-        # Load the CSV data
-            df_full =  self.find_header_row(filepath+"Bonifici 8 2024.xlsx", "Importo")
-        elif mese == 9:
-            df_full =  self.find_header_row(filepath+"Intesa 9.xlsx", "Importo")
+        
+        bonifici_file = self.uploaded_files.get("Bonifici")
+        
+        if not bonifici_file:
+            raise SkipMatcherException("Non ci sono bonifici")
+        
+        # Process the file and proceed with matching
+        df_full = self.find_header_row(bonifici_file, "Importo")
         
         mask = ~df_full['Operazione'].str.contains('|'.join(operations_patterns), case=False, regex=True, na=False)
         df_full = df_full[mask]        
@@ -617,9 +693,6 @@ class BonificoMatcher(PaymentMatcher):
         mask = df_check['Days_difference'].values == df_check.groupby('Name')['Days_difference'].transform('min').values
         df_check = df_check[mask | df_check['Days_difference'].isna()]
 
-        # min_days_difference = df_check.groupby('Name')['Days_difference'].transform(lambda x: x.min())
-        # df_check = df_check[(df_check['Days_difference'] == min_days_difference) | df_check['Days_difference'].isna()]
-
         df_check = self.check_partially_refunded(df_check, "Importo")
         # Apply check_discounts function directly for each row and modify df_check
         for _, row in df_check.iterrows():
@@ -629,9 +702,6 @@ class BonificoMatcher(PaymentMatcher):
         mask = (df_check["Payment Method"].str.contains(r'\+') 
                 & (df_check["CHECK"] == "VERO"))
         df_check.loc[mask & df_check["Payment Method"].str.contains("Bonifico"), "Payment Method"] = "Bonifico"
-
-        # names_with_vero = df_check[df_check['CHECK'] == 'VERO']['Name'].unique()
-        # df_check = df_check[~((df_check['CHECK'] == 'FALSO') & (df_check['Name'].isin(names_with_vero)))]
 
         df_ordini = df_check[self.df_ordini.columns]
 
@@ -646,18 +716,15 @@ class QromoMatcher(PaymentMatcher):
         return row["Importo Effettivo"]
 
     def match(self, mese, anno):
+
+        qromo_file = self.uploaded_files.get("Qromo")
         
-        if mese == 10:
+        if not qromo_file:
             raise SkipMatcherException("Non ci sono pagamenti col POS")
         
-        if mese == 8:
-            df_full = pd.read_csv(filepath+"Qromo 8 2024.csv", thousands='.')
-            data_interesse = str(anno)+"-08"
-        elif mese == 9:
-            df_full = pd.read_csv(filepath+"qromo.csv", thousands='.')
-            data_interesse = str(anno)+"-09"
-        # elif mese == 10:
-        #     # data_interesse = str(anno)+"-10"
+        # Process the file and proceed with matching
+        df_full = pd.read_csv(qromo_file, thousands='.')
+        data_interesse = f"{anno}-{mese:02}"
 
         df_full = df_full[df_full["Data"].str.startswith(data_interesse)]
         df_full = df_full[df_full["Stato"] != "Annullato"]
@@ -684,9 +751,6 @@ class QromoMatcher(PaymentMatcher):
 
         df_check = self.apply_checks(df_check, "qromo")
 
-        # df_check['Time_difference'] = (df_check['Data_datetime'] - df_check['Paid_datetime']).abs() 
-        # df_check = df_check.loc[df_check.groupby(['Name', "Lineitem name", 'CHECK'])['Time_difference'].idxmin()]
-
         filtered_df = df_check[df_check['CHECK'] != "NON TROVATO"]
         filtered_df['Time_difference'] = (filtered_df['Data_datetime'] - filtered_df['Paid_datetime']).abs() 
         min_indices = filtered_df.groupby(['Name', "Lineitem name", 'CHECK'])['Time_difference'].idxmin()
@@ -701,7 +765,6 @@ class QromoMatcher(PaymentMatcher):
         df_check = self.check_partially_refunded(df_check, "Importo Effettivo")
         for _, row in df_check.iterrows():
             df_check = self.check_discounts(row, df_check, "qromo")
-
 
         # Create a mask for rows that contain '+' in the 'Payment Method', exclude 'Gift Card', and have 'CHECK' set to 'VERO'
         mask = (df_check["Payment Method"].str.contains(r'\+') &
@@ -718,20 +781,34 @@ class QromoMatcher(PaymentMatcher):
 
         return df_check, df_ordini, df_full
 
+
 #matcher di shopify   
 class ShopifyMatcher(PaymentMatcher):
     def get_amount(self, row, tipo):
         return row["Amount"]
 
-    def match(self, mese):     
-        if mese == 8:
-            df_full = pd.read_csv(self.filepath + "Shopify LIL 8 2024.csv")
-        elif mese == 9:
-            lil =  pd.read_csv(filepath+"Shopify LIL.csv")
-            agee =  pd.read_csv(filepath+"Shopify AGEE.csv")
-            df_full = pd.concat([lil, agee], ignore_index=True)
-        elif mese == 10:
-            df_full = pd.read_csv(filepath+"shopify 10.csv")       
+    def match(self):  
+
+        shopify_lil_file = self.uploaded_files.get("Shopify LIL")
+        shopify_agee_file = self.uploaded_files.get("Shopify AGEE")
+
+        # assicurarsi che esista
+        if shopify_lil_file:
+            lil = pd.read_csv(shopify_lil_file)
+        else:
+            lil = pd.DataFrame()  # or handle the missing file as needed
+
+        # assicurarsi che esista
+        if shopify_agee_file:
+            agee = pd.read_csv(shopify_agee_file)
+        else:
+            agee = pd.DataFrame()  # or handle the missing file as needed
+
+        # Concatenate dataframes if both are available
+        df_full = pd.concat([lil, agee], ignore_index=True) if len(lil) > 0 or len(agee) > 0 else pd.DataFrame()
+        
+        if len(df_full) == 0:
+            raise SkipMatcherException("Non ci sono pagamenti con Shopify")
         
         df = df_full.groupby('Order', as_index=False)['Amount'].sum()
 
@@ -764,13 +841,14 @@ class ScalapayMatcher(PaymentMatcher):
     def get_amount(self, row, tipo):
         return row["Import lordo"]
 
-    def match(self, mese):
-        if mese == 8:
-            df_full = pd.read_csv(filepath + "Scalapay 8 2024.csv")
-        elif mese == 9:
-            df_full = pd.read_csv(filepath + "scalapay 9.2023.csv")
-        elif mese == 10:
-            df_full = pd.read_csv(filepath+"scalapay 10.csv")   
+    def match(self):
+        scalapay_file = self.uploaded_files.get("Scalapay")
+        
+        if not scalapay_file:
+            raise SkipMatcherException("Non ci sono pagamenti con Scalapay")
+        
+        # Process the file and proceed with matching
+        df_full = pd.read_csv(scalapay_file)
         
         # df = df_full[["Merchant ID", "Tipo", "Data acquisto/rimborso", "Import lordo"]]
         df = df_full.groupby('Merchant ID', as_index=False, dropna=False)['Import lordo'].sum()
@@ -807,12 +885,15 @@ class SatispayMatcher(PaymentMatcher):
     def get_amount(self, row, tipo):
         return row["total_amount"]
     
-    def match(self, mese):
-        if mese == 8 or mese == 10:
-            raise SkipMatcherException("Non ci sono pagamenti con Satispay")
+    def match(self):
 
-        if mese == 9:
-            df_full = pd.read_csv(filepath+"Satispay.csv")
+        satispay_file = self.uploaded_files.get("Satispay")
+        
+        if not satispay_file:
+            raise SkipMatcherException("Non ci sono pagamenti con Satispay")
+        
+        # Process the file and proceed with matching
+        df_full = pd.read_csv(satispay_file)
         
         df = df_full[['payment_date', 'total_amount', 'description']]
         df["Data_datetime"] = pd.to_datetime(df["payment_date"] ).dt.tz_localize(None)
@@ -875,131 +956,378 @@ class MatcherRunner:
     def __init__(self, matchers, df_ordini_iniziale):
         self.matchers = matchers
         self.df_ordini_iniziale = df_ordini_iniziale
-        # self.filename = filename
         self.df_ordini_all = None
 
     #runna matchers e crea excel
-    def run_all_matchers(self, mese, anno=2024):
-        qromo_matcher = next((matcher for matcher in self.matchers if isinstance(matcher, QromoMatcher)), None)
-        all_dfs = []
-        check_dfs = []
-        if mese == 8:
-            self.filename = "agosto_lilmilan.xlsx"
-        elif mese == 9:
-            self.filename = "settembre_lilmilan.xlsx"
-        elif mese == 10:
-            self.filename = "ottobre_lilmilan.xlsx"
+    # def run_all_matchers(self, mese, anno=2024):
+    #     qromo_matcher = next((matcher for matcher in self.matchers if isinstance(matcher, QromoMatcher)), None)
+    #     all_dfs = []
+    #     check_dfs = []
+    #     self.filename = f'Check_{mese:02}_lilmilan.xlsx'
         
-        # Create dictionaries to store DataFrames for each sheet
-        lil_sheets = {}
-        agee_sheets = {}
+    #     # Create dictionaries to store DataFrames for each sheet
+    #     lil_sheets = {}
+    #     agee_sheets = {}
 
-        for matcher in self.matchers:
-            try:
-                if matcher != qromo_matcher:
-                    df_check, df_ordini, df = matcher.match(mese)
-                else:
-                    df_check, df_ordini, df = matcher.match(mese, anno)
-            except SkipMatcherException as e:
-                print(f"{e}")
-                continue
+    #     for matcher in self.matchers:
+    #         try:
+    #             if matcher != qromo_matcher:
+    #                 df_check, df_ordini, df = matcher.match()
+    #             else:
+    #                 df_check, df_ordini, df = matcher.match(mese, anno)
+    #         except SkipMatcherException as e:
+    #             print(f"{e}")
+    #             continue
 
-            # Append to all_dfs and check_dfs
-            all_dfs.append(df_ordini)
-            check_dfs.append(df_check)
+    #         # Append to all_dfs and check_dfs
+    #         all_dfs.append(df_ordini)
+    #         check_dfs.append(df_check)
 
-            # Create masks
-            mask_lil = df["Brand"] == "LIL Milan"
-            mask_agee = df["Brand"] == "AGEE"
+    #         # Create masks
+    #         mask_lil = df["Brand"] == "LIL Milan"
+    #         mask_agee = df["Brand"] == "AGEE"
 
-            # Store filtered DataFrames in dictionaries
-            if mask_lil.any():
-                payment_name_lil = matcher.__class__.__name__.replace("Matcher", "") + "_LIL"
-                lil_sheets[payment_name_lil] = df[mask_lil]
+    #         # Store filtered DataFrames in dictionaries
+    #         if mask_lil.any():
+    #             payment_name_lil = matcher.__class__.__name__.replace("Matcher", "") + "_LIL"
+    #             lil_sheets[payment_name_lil] = df[mask_lil]
 
-            if mask_agee.any():
-                payment_name_agee = matcher.__class__.__name__.replace("Matcher", "") + "_AGEE"
-                agee_sheets[payment_name_agee] = df[mask_agee]
+    #         if mask_agee.any():
+    #             payment_name_agee = matcher.__class__.__name__.replace("Matcher", "") + "_AGEE"
+    #             agee_sheets[payment_name_agee] = df[mask_agee]
 
-        # Write everything to Excel at once
-        with pd.ExcelWriter(self.filename, engine='openpyxl', mode='w') as writer:
-            # Write LIL sheets
-            for sheet_name, df in lil_sheets.items():
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
+    #     # Write everything to Excel at once
+    #     with pd.ExcelWriter(self.filename, engine='openpyxl', mode='w') as writer:
+    #         # Write LIL sheets
+    #         for sheet_name, df in lil_sheets.items():
+    #             df.to_excel(writer, sheet_name=sheet_name, index=False)
             
-            # Write AGEE sheets
-            for sheet_name, df in agee_sheets.items():
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
+    #         # Write AGEE sheets
+    #         for sheet_name, df in agee_sheets.items():
+    #             df.to_excel(writer, sheet_name=sheet_name, index=False)
             
             
+    #         # Concatenate all DataFrames for final processing
+    #         df_ordini_payments = pd.concat(all_dfs, ignore_index=True)
+    #         df_ordini_payments = df_ordini_payments[df_ordini_payments["Name"].notna()]
+    #         df_ordini_payments = df_ordini_payments.groupby("Name", group_keys=False).apply(self.process_check_groups)
+
+    #         # Check for unmatched names
+    #         unique_names_payments = df_ordini_payments["Name"].unique()
+    #         unmatched_rows = self.df_ordini_iniziale[~self.df_ordini_iniziale["Name"].isin(unique_names_payments)]
+
+    #         # Concatenate payments and unmatched rows
+    #         self.df_ordini_all = pd.concat([df_ordini_payments, unmatched_rows], ignore_index=True)
+    #         self.df_ordini_all['Total'] = self.df_ordini_all.groupby('Name')['Total'].transform(lambda x: x.where(x.index == x.index[0], np.nan))
+    #         self.df_ordini_all = self.df_ordini_all.drop_duplicates(subset=['Name', 'Lineitem name'])
+
+    #         # Checking for inconsistencies in "Total"
+    #         inconsistent_totals = self.df_ordini_all.groupby('Name').filter(lambda group: group['Total'].nunique() > 1)
+            
+    #         if not inconsistent_totals.empty:
+    #             print(f"Inconsistent 'Total' values detected for the following 'Names':\n{inconsistent_totals}")
+    #         else:
+    #             print("All 'Names' have consistent 'Total' values.")
+
+    #         print()
+
+    #         mask_lil = self.df_ordini_all["Brand"] == "LIL Milan"
+    #         mask_agee = self.df_ordini_all["Brand"] == "AGEE"
+
+    #         if mask_lil.any():  # Check if there are any True values in the mask
+    #             # Write the concatenated data to the main sheet
+    #             self.df_ordini_all[mask_lil].to_excel(writer, sheet_name='Ordini LIL', index=False)
+            
+    #         if mask_agee.any():
+    #             self.df_ordini_all[mask_agee].to_excel(writer, sheet_name='Ordini AGEE', index=False)
+
+    #     # Create the summary table in a new sheet
+    #     self.create_summary_table()
+    #     self.create_daily_summary_table()
+
+    #     # First, create a list of all unique names that have CHECK == "VERO" across all dataframes
+    #     all_vero_names = set()  # using a set for unique values
+    #     for df in check_dfs:
+    #         vero_names = df[df['CHECK'] == "VERO"]['Name'].dropna().unique()
+    #         all_vero_names.update(vero_names)
+
+    #     # Now process each dataframe
+    #     for df in check_dfs:
+    #         mask = (
+    #             (~df['Name'].isin(all_vero_names)) | 
+    #             (df['Name'].isna()) |
+    #             ((df['Name'].isin(all_vero_names)) & (df['CHECK'] == "VERO"))
+    #         )
+            
+    #         # Apply the mask and print
+    #         filtered_df = df[mask]
+
+    #         nan_name_df = filtered_df[filtered_df['Name'].isna()]
+    #         non_nan_name_df = filtered_df[filtered_df['Name'].notna()].drop_duplicates(subset=['Name', 'Lineitem name'])
+    #         filtered_df = pd.concat([nan_name_df, non_nan_name_df], ignore_index=True)
+            
+    #         if not filtered_df[(filtered_df["CHECK"] != "VERO") & (filtered_df["Brand"] == "LIL Milan")].empty:
+    #             display("LIL Milan")
+    #             display(filtered_df[(filtered_df["CHECK"] != "VERO") & (filtered_df["Brand"] == "LIL Milan")])
+
+    #         if not filtered_df[(filtered_df["CHECK"] != "VERO") & (filtered_df["Brand"] == "AGEE")].empty:
+    #             display("AGEE")
+    #             display(filtered_df[(filtered_df["CHECK"] != "VERO") & (filtered_df["Brand"] == "AGEE")])
+        
+    #     return df_check, self.df_ordini_all, df
+
+
+    def run_all_matchers(self, mese, anno=2024):
+        print("Starting run_all_matchers")
+        try:
+            qromo_matcher = next((matcher for matcher in self.matchers if isinstance(matcher, QromoMatcher)), None)
+            all_dfs = []
+            check_dfs = []
+            
+            print("Processing matchers...")
+            for matcher in self.matchers:
+                try:
+                    print(f"Processing matcher: {type(matcher).__name__}")
+                    # Change this comparison
+                    if not isinstance(matcher, QromoMatcher):
+                        df_check, df_ordini, df = matcher.match()
+                    else:
+                        df_check, df_ordini, df = matcher.match(mese, anno)
+                        
+                    print(f"Match successful for {type(matcher).__name__}")
+                    all_dfs.append(df_ordini)
+                    check_dfs.append(df_check)
+                                
+                except SkipMatcherException as e:
+                    print(f"Skipped matcher: {e}")
+                    continue
+                except Exception as e:
+                    print(f"Error in matcher {type(matcher).__name__}: {str(e)}")
+                    raise e
+
+            print("All matchers processed")
+            print(f"Number of dfs collected: {len(all_dfs)}")
+
+
             # Concatenate all DataFrames for final processing
             df_ordini_payments = pd.concat(all_dfs, ignore_index=True)
             df_ordini_payments = df_ordini_payments[df_ordini_payments["Name"].notna()]
             df_ordini_payments = df_ordini_payments.groupby("Name", group_keys=False).apply(self.process_check_groups)
 
-            # Check for unmatched names
-            unique_names_payments = df_ordini_payments["Name"].unique()
-            unmatched_rows = self.df_ordini_iniziale[~self.df_ordini_iniziale["Name"].isin(unique_names_payments)]
+            # Check for unmatched names using explicit boolean indexing
+            unique_names_payments = set(df_ordini_payments["Name"].unique())  # Use a set for faster lookup
+            unmatched_mask = ~self.df_ordini_iniziale["Name"].isin(unique_names_payments)
+            unmatched_rows = self.df_ordini_iniziale[unmatched_mask]
 
             # Concatenate payments and unmatched rows
             self.df_ordini_all = pd.concat([df_ordini_payments, unmatched_rows], ignore_index=True)
             self.df_ordini_all['Total'] = self.df_ordini_all.groupby('Name')['Total'].transform(lambda x: x.where(x.index == x.index[0], np.nan))
             self.df_ordini_all = self.df_ordini_all.drop_duplicates(subset=['Name', 'Lineitem name'])
 
-            # Checking for inconsistencies in "Total"
-            inconsistent_totals = self.df_ordini_all.groupby('Name').filter(lambda group: group['Total'].nunique() > 1)
-            
-            if not inconsistent_totals.empty:
-                print(f"Inconsistent 'Total' values detected for the following 'Names':\n{inconsistent_totals}")
+            # Checking for inconsistencies in "Total" using explicit length check
+            inconsistent_groups = self.df_ordini_all.groupby('Name').filter(lambda group: group['Total'].nunique() > 1)
+            if len(inconsistent_groups) > 0:
+                print(f"Inconsistent 'Total' values detected for the following 'Names':\n{inconsistent_groups}")
             else:
                 print("All 'Names' have consistent 'Total' values.")
 
             print()
 
-            mask_lil = self.df_ordini_all["Brand"] == "LIL Milan"
-            mask_agee = self.df_ordini_all["Brand"] == "AGEE"
+            # Create a set of all unique names that have CHECK == "VERO" across all dataframes
+            all_vero_names = set()
+            for df in check_dfs:
+                vero_mask = (df['CHECK'] == "VERO") & df['Name'].notna()
+                vero_names = set(df[vero_mask]['Name'])
+                all_vero_names.update(vero_names)
 
-            if mask_lil.any():  # Check if there are any True values in the mask
-                # Write the concatenated data to the main sheet
-                self.df_ordini_all[mask_lil].to_excel(writer, sheet_name='Ordini LIL', index=False)
+            non_veri_check = []
+            # Now process each dataframe
+            for df in check_dfs:
+                # Create explicit boolean masks
+                not_in_vero = ~df['Name'].isin(all_vero_names)
+                is_nan = df['Name'].isna()
+                is_vero = (df['Name'].isin(all_vero_names)) & (df['CHECK'] == "VERO")
+                
+                # Combine masks
+                mask = not_in_vero | is_nan | is_vero
+                
+                # Apply the mask
+                filtered_df = df[mask].copy()
+
+                # Split and recombine based on NaN values
+                nan_mask = filtered_df['Name'].isna()
+                nan_name_df = filtered_df[nan_mask]
+                non_nan_name_df = filtered_df[~nan_mask].drop_duplicates(subset=['Name', 'Lineitem name'])
+                
+                filtered_df = pd.concat([nan_name_df, non_nan_name_df], ignore_index=True)
+                non_veri_check.append(filtered_df)
+
+            # Concatenate all filtered dataframes into a single dataframe
+            final_df = pd.concat(non_veri_check, ignore_index=True)
             
-            if mask_agee.any():
-                self.df_ordini_all[mask_agee].to_excel(writer, sheet_name='Ordini AGEE', index=False)
-
-        # Create the summary table in a new sheet
-        self.create_summary_table()
-        self.create_daily_summary_table()
-
-        # First, create a list of all unique names that have CHECK == "VERO" across all dataframes
-        all_vero_names = set()  # using a set for unique values
-        for df in check_dfs:
-            vero_names = df[df['CHECK'] == "VERO"]['Name'].dropna().unique()
-            all_vero_names.update(vero_names)
-
-        # Now process each dataframe
-        for df in check_dfs:
-            mask = (
-                (~df['Name'].isin(all_vero_names)) | 
-                (df['Name'].isna()) |
-                ((df['Name'].isin(all_vero_names)) & (df['CHECK'] == "VERO"))
-            )
+            # If you want to ensure no duplicates in the final dataframe
+            final_df = final_df.drop_duplicates()
             
-            # Apply the mask and print
-            filtered_df = df[mask]
-
-            nan_name_df = filtered_df[filtered_df['Name'].isna()]
-            non_nan_name_df = filtered_df[filtered_df['Name'].notna()].drop_duplicates(subset=['Name', 'Lineitem name'])
-            filtered_df = pd.concat([nan_name_df, non_nan_name_df], ignore_index=True)
             
-            if not filtered_df[(filtered_df["CHECK"] != "VERO") & (filtered_df["Brand"] == "LIL Milan")].empty:
-                display("LIL Milan")
-                display(filtered_df[(filtered_df["CHECK"] != "VERO") & (filtered_df["Brand"] == "LIL Milan")])
+            # Sort by Brand to keep LIL Milan and AGEE records together
+            final_df = final_df.sort_values('Brand')
 
-            if not filtered_df[(filtered_df["CHECK"] != "VERO") & (filtered_df["Brand"] == "AGEE")].empty:
-                display("AGEE")
-                display(filtered_df[(filtered_df["CHECK"] != "VERO") & (filtered_df["Brand"] == "AGEE")])
+            return final_df
         
-        return df_check, self.df_ordini_all, df
+        except Exception as e:
+            print(f"Error in run_all_matchers: {str(e)}")
+            raise e
+        
+        
+            
+        
+        
+        
+    # def run_all_matchers(self, mese, anno=2024):
+    #     qromo_matcher = next((matcher for matcher in self.matchers if isinstance(matcher, QromoMatcher)), None)
+    #     all_dfs = []
+    #     check_dfs = []
+    #     self.filename = f'Check_{mese:02}_lilmilan.xlsx'
+        
+    #     # Create dictionaries to store DataFrames for each sheet
+    #     lil_sheets = {}
+    #     agee_sheets = {}
+
+    #     for matcher in self.matchers:
+    #         try:
+    #             if matcher != qromo_matcher:
+    #                 df_check, df_ordini, df = matcher.match()
+    #             else:
+    #                 df_check, df_ordini, df = matcher.match(mese, anno)
+    #         except SkipMatcherException as e:
+    #             print(f"{e}")
+    #             continue
+
+    #         # Append to all_dfs and check_dfs
+    #         all_dfs.append(df_ordini)
+    #         check_dfs.append(df_check)
+
+    #     # Concatenate all DataFrames for final processing
+    #     df_ordini_payments = pd.concat(all_dfs, ignore_index=True)
+    #     df_ordini_payments = df_ordini_payments[df_ordini_payments["Name"].notna()]
+    #     df_ordini_payments = df_ordini_payments.groupby("Name", group_keys=False).apply(self.process_check_groups)
+
+    #     # Check for unmatched names using explicit boolean indexing
+    #     unique_names_payments = set(df_ordini_payments["Name"].unique())  # Use a set for faster lookup
+    #     unmatched_mask = ~self.df_ordini_iniziale["Name"].isin(unique_names_payments)
+    #     unmatched_rows = self.df_ordini_iniziale[unmatched_mask]
+
+    #     # Concatenate payments and unmatched rows
+    #     self.df_ordini_all = pd.concat([df_ordini_payments, unmatched_rows], ignore_index=True)
+    #     self.df_ordini_all['Total'] = self.df_ordini_all.groupby('Name')['Total'].transform(lambda x: x.where(x.index == x.index[0], np.nan))
+    #     self.df_ordini_all = self.df_ordini_all.drop_duplicates(subset=['Name', 'Lineitem name'])
+
+    #     # Checking for inconsistencies in "Total" using explicit length check
+    #     inconsistent_groups = self.df_ordini_all.groupby('Name').filter(lambda group: group['Total'].nunique() > 1)
+    #     if len(inconsistent_groups) > 0:
+    #         print(f"Inconsistent 'Total' values detected for the following 'Names':\n{inconsistent_groups}")
+    #     else:
+    #         print("All 'Names' have consistent 'Total' values.")
+
+    #     print()
+
+    #     # Create a set of all unique names that have CHECK == "VERO" across all dataframes
+    #     all_vero_names = set()
+    #     for df in check_dfs:
+    #         vero_mask = (df['CHECK'] == "VERO") & df['Name'].notna()
+    #         vero_names = set(df[vero_mask]['Name'])
+    #         all_vero_names.update(vero_names)
+
+    #     non_veri_check = []
+    #     # Now process each dataframe
+    #     for df in check_dfs:
+    #         # Create explicit boolean masks
+    #         not_in_vero = ~df['Name'].isin(all_vero_names)
+    #         is_nan = df['Name'].isna()
+    #         is_vero = (df['Name'].isin(all_vero_names)) & (df['CHECK'] == "VERO")
+            
+    #         # Combine masks
+    #         mask = not_in_vero | is_nan | is_vero
+            
+    #         # Apply the mask
+    #         filtered_df = df[mask].copy()
+
+    #         # Split and recombine based on NaN values
+    #         nan_mask = filtered_df['Name'].isna()
+    #         nan_name_df = filtered_df[nan_mask]
+    #         non_nan_name_df = filtered_df[~nan_mask].drop_duplicates(subset=['Name', 'Lineitem name'])
+            
+    #         filtered_df = pd.concat([nan_name_df, non_nan_name_df], ignore_index=True)
+    #         non_veri_check.append(filtered_df)
+
+    #     # Concatenate all filtered dataframes into a single dataframe
+    #     final_df = pd.concat(non_veri_check, ignore_index=True)
+        
+    #     # If you want to ensure no duplicates in the final dataframe
+    #     final_df = final_df.drop_duplicates()
+        
+    #     # Sort by Brand to keep LIL Milan and AGEE records together
+    #     final_df = final_df.sort_values('Brand')
+        
+    #     return final_df
+
+    
+            # if not filtered_df[(filtered_df["CHECK"] != "VERO") & (filtered_df["Brand"] == "LIL Milan")].empty:
+            #     display("LIL Milan")
+            #     display(filtered_df[(filtered_df["CHECK"] != "VERO") & (filtered_df["Brand"] == "LIL Milan")])
+
+            # if not filtered_df[(filtered_df["CHECK"] != "VERO") & (filtered_df["Brand"] == "AGEE")].empty:
+            #     display("AGEE")
+            #     display(filtered_df[(filtered_df["CHECK"] != "VERO") & (filtered_df["Brand"] == "AGEE")])
+        
+
+
+
+
+##################### DOPO AGGIUSTAMENTO ############################
+            # Create masks
+            # mask_lil = df["Brand"] == "LIL Milan"
+            # mask_agee = df["Brand"] == "AGEE"
+
+            # # Store filtered DataFrames in dictionaries
+            # if mask_lil.any():
+            #     payment_name_lil = matcher.__class__.__name__.replace("Matcher", "") + "_LIL"
+            #     lil_sheets[payment_name_lil] = df[mask_lil]
+
+            # if mask_agee.any():
+            #     payment_name_agee = matcher.__class__.__name__.replace("Matcher", "") + "_AGEE"
+            #     agee_sheets[payment_name_agee] = df[mask_agee]
+
+        # # Write everything to Excel at once
+        # with pd.ExcelWriter(self.filename, engine='openpyxl', mode='w') as writer:
+        #     # Write LIL sheets
+        #     for sheet_name, df in lil_sheets.items():
+        #         df.to_excel(writer, sheet_name=sheet_name, index=False)
+            
+        #     # Write AGEE sheets
+        #     for sheet_name, df in agee_sheets.items():
+        #         df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+        
+        # mask_lil = self.df_ordini_all["Brand"] == "LIL Milan"
+        # mask_agee = self.df_ordini_all["Brand"] == "AGEE"
+
+        # if mask_lil.any():  # Check if there are any True values in the mask
+        #     # Write the concatenated data to the main sheet
+        #     self.df_ordini_all[mask_lil].to_excel(writer, sheet_name='Ordini LIL', index=False)
+        
+        # if mask_agee.any():
+        #     self.df_ordini_all[mask_agee].to_excel(writer, sheet_name='Ordini AGEE', index=False)
+            
+    ############################## FINE AGGIUNTA ################ 
+            
+
+        # # Create the summary table in a new sheet
+        # self.create_summary_table()
+        # self.create_daily_summary_table()
+
+        
+        # return df_check, self.df_ordini_all, df
 
     #check
     def process_check_groups(self, group):
@@ -1161,7 +1489,7 @@ class MatcherRunner:
         # Create tables for both stores
         start_row = 3  # Starting row for first table
         start_row = self.create_location_stats(df_lil, start_row, summary_sheet, 'LIL')
-        if not df_agee.empty:
+        if len(df_agee) > 0:
             self.create_location_stats(df_agee, start_row, summary_sheet, 'AGEE')
 
         # Save the workbook
