@@ -26,14 +26,17 @@ class PaypalMatcher(PaymentMatcher):
         df_full = df_full[df_full["Tipo"].isin(["Pagamento Express Checkout", "Rimborso di pagamento"])]
         df_full = df_full[~df_full["Nome"].str.contains("propac", case=False, na=False)] #ha detto di toglierlo
 
+        # solo per prove agosto perchè il file è troncato
+        # cutoff_date1 = '26/08/2024'
+        # df_full['Month'] = df_full['Data'].str[3:5]  # Extract the month part (MM)
+        # if (df_full['Month'] == '08').all():
+        #     df_full = df_full[df_full['Data'] <= cutoff_date1]
+
         df = df_full[['Data', "Nome", "Tipo", 'Valuta', 'Lordo', 'N° ordine commerciante', "Titolo oggetto"]]
         df = df.groupby('N° ordine commerciante', as_index=False).agg({'Lordo': 'sum',        # Sum the 'Lordo' values
                                                                                'Valuta': 'first',      # Take the first 'Valuta' value for each group
                                                                                "Data": "first"})
-        cutoff_date1 = '2024-08-26'
-        df['Month'] = df['Data'].str[5:7]  # Extract the month part (MM)
-        if (df['Month'] == '08').all():
-            df = df[df['Data'] <= cutoff_date1]
+        
         
         # Using a dictionary where keys are old names and values are new names
         df = df.rename(columns={'N° ordine commerciante': 'Numero Pagamento', 'Lordo': 'Importo Pagato'})

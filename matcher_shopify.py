@@ -27,8 +27,13 @@ class ShopifyMatcher(PaymentMatcher):
 
         # Concatenate dataframes if both are available
         df_full = pd.concat([lil, agee], ignore_index=True) if len(lil) > 0 or len(agee) > 0 else pd.DataFrame()
-        # df_full = self.adjust_paid_at(df_full, 'Transaction Date')
         columns = df_full.columns
+
+        # solo per prove agosto perchè il file è troncato
+        # cutoff_date1 = '2024-08-27 11:42:28'
+        # df_full['Month'] = df_full['Transaction Date'].str[5:7]  # Extract the month part (MM)
+        # if (df_full['Month'] == '08').all():
+        #     df_full = df_full[df_full['Transaction Date'] <= cutoff_date1]
         
         if len(df_full) == 0:
             raise SkipMatcherException("Non ci sono pagamenti con Shopify")
@@ -36,20 +41,13 @@ class ShopifyMatcher(PaymentMatcher):
         df = df_full.groupby('Order', as_index=False).agg({'Amount': 'sum',        # Sum the 'Lordo' values
                                                     'Transaction Date': 'first',      # Take the first 'Valuta' value for each group
                                                         })
-        cutoff_date1 = '2024-08-27 11:42:28'
-        df['Month'] = df['Transaction Date'].str[5:7]  # Extract the month part (MM)
-        if (df['Month'] == '08').all():
-            df = df[df['Transaction Date'] <= cutoff_date1]
-
-        # Optionally, drop the 'Month' column if you don't need it anymore
-        df = df.drop(columns=['Month'])
 
         df = df.rename(columns={"Transaction Date": "Data", "Order": "Numero Pagamento", "Amount": "Importo Pagato"})
 
         df_ordini = self.df_ordini[self.df_ordini['Payment Method'].str.contains('Shopify', case=False, na=False)]
 
         df_check = pd.merge(df_ordini, df, left_on="Name", right_on="Numero Pagamento", how='outer')
-        df_check = self.apply_checks(df_check) #, ordini_vecchi=True)
+        df_check = self.apply_checks(df_check)
         
         mask = (df_check["Payment Method"].str.contains(r'\+') &
                 (df_check["CHECK"] == "VERO"))

@@ -22,7 +22,7 @@ def run(uploaded_ordini_files, uploaded_other_files, mese, anno):
     #ordini
     print("ordini iniziati")
     ordini_processor = Ordini(uploaded_ordini_files, mese=mese)
-    ordini, df_columns = ordini_processor.preprocess()  # Store columns in instance variable
+    ordini, df_columns = ordini_processor.preprocess() 
     print("ordini finiti")
 
     ColumnsState.get_instance().set_df_columns(df_columns)
@@ -50,7 +50,6 @@ def run(uploaded_ordini_files, uploaded_other_files, mese, anno):
         print("Runner created")
         
         result, pagamenti, pagamenti_columns = runner.run_all_matchers(mese, anno)
-        print(pagamenti_columns)
         ColumnsState.get_instance().set_pagamenti_columns(pagamenti_columns)
         
         return result, pagamenti
@@ -62,13 +61,10 @@ def run(uploaded_ordini_files, uploaded_other_files, mese, anno):
 
 def update_df(df, index, new_value, nota, pagamenti = None):
     print("Entering update_df")  # Debug print to indicate the function is called
-    print(f"Parameters received: df: {df.shape}, index: {index}, new_value: {new_value}, nota: {nota}")
     
     if pagamenti is not None:
-        print("Initial pagamenti:\n", pagamenti)
         
         if new_value[0] is not None:
-            print("Adding a new row.")
             brand = "LIL Milan" if int(new_value[0]) > 30000 else "AGEE"
             new_row = {
                 "Name": "#" + str(new_value[0]),
@@ -88,8 +84,6 @@ def update_df(df, index, new_value, nota, pagamenti = None):
             print(f"Dropping row at index {index}")
             pagamenti.drop(index, inplace=True)
             
-    print("Updated pagamenti:\n", pagamenti)
-
     # Handle df updates based on nota
     if nota == "Gift Card" or nota == "Gift Card only":
         print("Processing Gift Card or Gift Card only")
@@ -113,8 +107,6 @@ def update_df(df, index, new_value, nota, pagamenti = None):
 
     elif nota == "Reso dubbio":
         print("Processing Reso dubbio")
-        print(f"Index before processing: {index}")  # Debug print
-        print(f"New value before processing: {new_value}")  # Debug print
 
         # Check if index and new_value have the same length
         if len(index) != len(new_value):
@@ -132,27 +124,22 @@ def update_df(df, index, new_value, nota, pagamenti = None):
         if index:  # Check if index is not empty
             # Filter the indices where Total is not NaN
             valid_indices = [i for i in index if pd.notna(df.loc[i, "Total"])]
-            print(valid_indices)
-
+        
             if valid_indices:  # Check if there are any valid indices
                 first_row = min(valid_indices)  # Get the first valid index
-                print(f"First row for total calculation: {first_row}")  # Debug print
 
                 # Sum total for all line items with the same "Name"
                 for idx in index:
                     row = df.iloc[idx]
                     total += row['Lineitem quantity'] * row['Lineitem price']
-                    print(f"Current total after adding index {idx}: {total}")  # Debug print
-
+            
                 # Adding Shipping and subtracting Discount from the first row
                 shipping = df.loc[first_row, 'Shipping'] if pd.notna(df.loc[first_row, 'Shipping']) else 0
                 discount = df.loc[first_row, 'Discount Amount'] if pd.notna(df.loc[first_row, 'Discount Amount']) else 0
                 total += shipping - discount
-                print(f"Total after adding Shipping and subtracting Discount: {total}")  # Debug print
 
                 # Compare the new total with "Importo Pagato"
                 importo_pagato = df.loc[first_row, 'Importo Pagato'] if pd.notna(df.loc[first_row, 'Importo Pagato']) else 0
-                print(f"Importo Pagato: {importo_pagato}")  # Debug print
                 
                 if total != importo_pagato:
                     raise ValueError(f"Controllare le quantità, l'importo pagato {importo_pagato} non corrisponde con il totale calcolato {total}")

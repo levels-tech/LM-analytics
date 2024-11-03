@@ -143,12 +143,6 @@ class Ordini:
         self.df["CHECK"] = self.df["Payment Method"].apply(lambda x: "PAGAMENTO ALTRO" if pd.notna(x) and not pd.Series(x).str.contains(pattern, regex=True).any() else None)
         self.df["note_interne"] = self.df["CHECK"].apply(lambda x: "Metodo di pagamento ignoto" if x == "PAGAMENTO ALTRO" else None)
 
-        # Optional: Print rows with "Metodo di pagamento ignoto" for verification
-        unknown_methods = self.df[self.df["CHECK"] == "PAGAMENTO ALTRO"]
-        if not unknown_methods.empty:
-            print("Unknown payment methods found:")
-            print(unknown_methods[["Payment Method", "CHECK", "note_interne"]])
-
         cash_names = self.df[self.df["Payment Method"] == "Cash"]["Name"].unique()
         mask = self.df["Name"].isin(cash_names)
         self.df.loc[mask, "CHECK"] = "CASH"

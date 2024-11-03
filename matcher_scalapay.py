@@ -16,17 +16,17 @@ class ScalapayMatcher(PaymentMatcher):
         
         # Process the file and proceed with matching
         df_full = pd.read_csv(scalapay_file)
-        # df_full = self.adjust_paid_at(df_full, 'Data acquisto/rimborso')
         columns = df_full.columns
+        
+        # solo per prove agosto perchè il file è troncato
+        # cutoff_date1 = '2024-08-27 11:42:28'
+        # df_full['Month'] = df_full['Data acquisto/rimborso'].str[5:7]  # Extract the month part (MM)
+        # if (df_full['Month'] == '08').all():
+        #     df_full = df_full[df_full['Data acquisto/rimborso'] <= cutoff_date1]
         
         df = df_full.groupby('Merchant ID', as_index=False, dropna=False).agg({'Import lordo': 'sum',        # Sum the 'Lordo' values
                                                                                 'Data acquisto/rimborso': 'first',      # Take the first 'Valuta' value for each group
                                                                                 })
-        
-        cutoff_date1 = '2024-08-27 11:42:28'
-        df['Month'] = df['Data acquisto/rimborso'].str[5:7]  # Extract the month part (MM)
-        if (df['Month'] == '08').all():
-            df = df[df['Data acquisto/rimborso'] <= cutoff_date1]
 
         df = df.rename(columns={'Merchant ID': "Numero Pagamento", "Data acquisto/rimborso": "Data", "Import lordo": "Importo Pagato"})
 

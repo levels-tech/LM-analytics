@@ -50,19 +50,19 @@ class BonificoMatcher(PaymentMatcher):
         # df_full = self.adjust_paid_at(df_full, "Data", bonifico=True)
         columns = df_full.columns
         
-        print("str 1")
         mask = ~df_full['Operazione'].str.contains('|'.join(operations_patterns), case=False, regex=True, na=False)
-        df_full = df_full[mask]        
+        df_full = df_full[mask] 
+
+        # solo per prove agosto perchè il file è troncato
+        # cutoff_date1 = '2024-08-27'   
+        # df_full['Month'] = df_full['Data'].str[5:7]  # Extract the month part (MM)
+        # if (df_full['Month'] == '08').all():
+        #     df_full = df_full[df_full['Data'] <= cutoff_date1]    
+        
         df = df_full.copy()
-        cutoff_date1 = '2024-08-27'
-        df['Month'] = df['Data'].str[5:7]  # Extract the month part (MM)
-        if (df['Month'] == '08').all():
-            df = df[df['Data'] <= cutoff_date1]
         df = df.rename(columns={"Dettagli": "Numero Pagamento", 'Importo': 'Importo Pagato'})
 
-        print("str 2")
         df_ordini = self.df_ordini[self.df_ordini['Payment Method'].str.contains('Bonifico', case=True, na=False)]
-        # df_ordini['Paid_datetime'] = pd.to_datetime(df_ordini['Paid at']).dt.tz_localize(None)
 
         df_check = pd.merge(df_ordini, df, left_on='Total', right_on='Importo Pagato', how='outer')
         df_check['Days_difference'] = ((pd.to_datetime(df_check['Data'], errors='coerce').dt.tz_localize(None) - pd.to_datetime(df_check['Paid at']).dt.tz_localize(None)).dt.days).abs()
@@ -72,10 +72,8 @@ class BonificoMatcher(PaymentMatcher):
 
         df_check = self.apply_checks(df_check)
 
-        print("str 3")
         mask = (df_check["Payment Method"].str.contains(r'\+') 
                 & (df_check["CHECK"] == "VERO"))
-        print("str 4")
         df_check.loc[mask & df_check["Payment Method"].str.contains("Bonifico"), "Payment Method"] = "Bonifico"
 
         df_full = pd.merge(df_full, df_check[["Name", "Data", "Numero Pagamento", "Importo Pagato", "Brand", "CHECK", "note_interne"]], on = "Data", how = "left")

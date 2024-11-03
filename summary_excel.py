@@ -13,6 +13,18 @@ class OrderSummary:
         self.pagamenti = pagamenti
         self.filename = filename
 
+    #PROVAAAAAAAA
+    def process_group(self, group):
+        # Check if all non-NaN 'Total' values in the group are the same
+        unique_totals = group['Total'].dropna().unique()
+        
+        if len(unique_totals) == 1:
+            # If all 'Total' values are the same, keep only the first non-NaN occurrence
+            group.loc[group['Total'].notna().cumsum() > 1, 'Total'] = pd.NA
+        # If values are different, keep them as they are (no changes)
+        return group
+
+
     def create_files(self):
         try:
             sheet_order = ['Totale',           # First summary sheet
@@ -37,6 +49,9 @@ class OrderSummary:
             df_columns = columns_state.df_columns
             pagamenti_columns = columns_state.pagamenti_columns
 
+            # Apply the function to each 'Name' group
+            self.df_ordini_all = self.df_ordini_all.groupby('Name', group_keys=False).apply(self.process_group)
+
             # First write the basic DataFrames
             with pd.ExcelWriter(self.filename, engine='openpyxl', mode='a') as writer:
                 mask_lil_o = self.df_ordini_all["Brand"] == "LIL Milan"
@@ -46,26 +61,22 @@ class OrderSummary:
                 # Write order sheets first (these are needed for the summary tables)
                 if mask_lil_o.any(): 
                     lil = self.df_ordini_all[mask_lil_o]
-                    # lil = lil.iloc[:, :lil.columns.get_loc("Payment References") + 2]
                     lil = lil[df_columns]
                     lil.to_excel(writer, sheet_name='Ordini LIL', index=False)
                 
                 if mask_agee_o.any():
                     agee = self.df_ordini_all[mask_agee_o]
-                    # agee = agee.iloc[:, :agee.columns.get_loc("Payment References") + 2]
                     agee = agee[df_columns]
                     agee.to_excel(writer, sheet_name='Ordini AGEE', index=False)
 
                 # Write payment sheets
                 mask_lil_p = self.pagamenti["Brand"] == "LIL Milan"
                 mask_agee_p = self.pagamenti["Brand"] == "AGEE"
-                print(len(self.pagamenti[mask_agee_o]))
 
                 if mask_lil_p.any():
                     for p in self.pagamenti["Metodo"].unique():
                         payment_name_lil = p.split()[0] + "_LIL"
                         filtered_df_lil = self.pagamenti[mask_lil_p & (self.pagamenti["Metodo"] == p)]
-                        print(len(filtered_df_lil))
 
                         if not filtered_df_lil.empty:
                             matching_columns = next((cols for key, cols in pagamenti_columns.items() 
@@ -74,7 +85,7 @@ class OrderSummary:
                             # Filter columns if match found
                             if len(matching_columns) > 0:
                                 filtered_df_lil = filtered_df_lil[matching_columns]
-                            filtered_df_lil.to_excel(writer, sheet_name=payment_name_lil, index=False) #da indentare 
+                            filtered_df_lil.to_excel(writer, sheet_name=payment_name_lil, index=False)
 
                 if mask_agee_p.any():
                     for p in self.pagamenti["Metodo"].unique():
@@ -88,7 +99,7 @@ class OrderSummary:
                             # Filter columns if match found
                             if len(matching_columns) > 0:
                                 filtered_df_agee = filtered_df_agee[matching_columns]
-                            filtered_df_agee.to_excel(writer, sheet_name=payment_name_agee, index=False) #da indentare
+                            filtered_df_agee.to_excel(writer, sheet_name=payment_name_agee, index=False)
 
             # Now create the summary tables after all required sheets exist
             self.create_summary_table()  # This creates 'Totale' sheet
@@ -168,6 +179,7 @@ class OrderSummary:
             summary_sheet[f'J{idx}'] = unique_orders
             summary_sheet[f'K{idx}'] = items_quantity
             summary_sheet[f'L{idx}'] = f'=K{idx}/J{idx}'
+            summary_sheet[f'L{idx}'].number_format = '0.00'
 
         summary_sheet[f'H{idx+1}'] = 'Totale'
         summary_sheet[f'H{idx+1}'].font = Font(bold=True)
@@ -270,9 +282,7 @@ class OrderSummary:
             cell.value = value
             cell.font = bold_font
 
-    
         self.df_ordini_all['Giorno'] = self.df_ordini_all['Paid at'].apply(self.reformat_date)
-        print(self.df_ordini_all['Giorno'].value_counts())
 
         df_ordini_locations = self.df_ordini_all[self.df_ordini_all["Location"].isin(["Firgun House", "LIL House", "LIL House London"])]
         df_ordini_locations_lil = df_ordini_locations[df_ordini_locations["Brand"] == "LIL Milan"]

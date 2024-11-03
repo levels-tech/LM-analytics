@@ -1,5 +1,5 @@
 ##FILE DI INTERFACCIA STREAMLIT
-# 
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -20,10 +20,9 @@ def generate_excel(df_ordini_all, pp, filename):
 st.set_page_config(layout="wide")
 
 
-colonne = ['Name', "Importo Pagato",  "Total", 'Shipping', 'Discount Code', 'Discount Amount', 'Paid at', 'Payment Method', 'Email', 'Financial Status', 'Currency', 
+colonne = ['Name', "Importo Pagato",  "Total", 'Shipping', 'Discount Code', 'Discount Amount', 'Paid at', 'Payment Method', "note_interne", 'Email', 'Financial Status', 'Currency', 
                 'Lineitem quantity', 'Lineitem name', 'Lineitem price', 'Lineitem compare at price', 
-                 'Refunded Amount', 'Outstanding Balance','Location',
-                ]               
+                 'Refunded Amount', 'Outstanding Balance','Location',]               
 
 # Initialize session state variables
 if 'processed_data' not in st.session_state:
@@ -261,11 +260,9 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     
                     #Get current total and input for new total
                     current_total = name_df['Total'].iloc[0] if len(name_df) > 0 else 0
-                    new_total = st.number_input(
-                        "Inserire il nuovo valore per 'Total':",
-                        min_value=0.0,
-                        value=float(current_total),
-                        step=0.01,
+                    new_total = st.text_input(
+                        "Il pagamento non è stato trovato. Se l'ordine non è da considerare, cambiare il Total a 0.",
+                        value=str(current_total),
                         key=f"new_total_{name}"
                     )
 
@@ -459,11 +456,9 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     
                     #Get current total and input for new total
                     current_total = name_df['Total'].iloc[0] if len(name_df) > 0 else 0
-                    new_total = st.number_input(
-                        "Inserire il nuovo valore per 'Total':",
-                        min_value=0.0,
-                        value=float(current_total),
-                        step=0.01,
+                    new_total = st.text_input(
+                        "Il pagamento non è stato trovato. Se l'ordine non è da considerare, cambiare il Total a 0.",
+                        value=str(current_total),
                         key=f"new_total_{name}"
                     )
 
@@ -585,8 +580,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     else:
         st.subheader("Nessun pagamento deve essere controllato")
 
-
-    # 3. PLACE THE EXCEL GENERATION CODE HERE, AT THE END
     # Check both index and name updates
     all_index_updates_complete = all(
         st.session_state.get(f"updated_{index}", False) 

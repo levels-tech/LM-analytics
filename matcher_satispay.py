@@ -15,14 +15,13 @@ class SatispayMatcher(PaymentMatcher):
         
         # Process the file and proceed with matching
         df_full = pd.read_csv(satispay_file)
-        # df_full = self.adjust_paid_at(df_full, "payment_date")
         columns = df_full.columns
 
         df = df_full[['payment_date', 'total_amount', 'description']]
         df['partial_date'] = pd.to_datetime(df['payment_date']).dt.tz_localize(None).dt.date
         df = df.rename(columns={"description": "Numero Pagamento", "payment_date": "Data", "total_amount": "Importo Pagato"})
 
-        #Oridni online con description != 0
+        #Ordini online con description != 0
         df_ordini_online = self.df_ordini[self.df_ordini['Payment Method'].str.contains('Satispay', case=False, na=False)]
         df_check_online = self.merge_dfs(df_ordini_online, df[df["Numero Pagamento"] != "0"])
 
@@ -30,15 +29,12 @@ class SatispayMatcher(PaymentMatcher):
 
         #Ordini negozio con description = 0
         df_ordini_negozio = self.df_ordini[self.df_ordini['Payment Method'].str.contains('Qromo', case=False, na=False)]
-        # df_ordini_negozio['Paid_datetime'] = pd.to_datetime(df_ordini_negozio['Paid at']).dt.tz_localize(None)
         df_ordini_negozio['partial_date'] = pd.to_datetime(df_ordini_negozio['Paid at']).dt.tz_localize(None).dt.date
 
         df_check_negozio = pd.merge(df_ordini_negozio, df[df["Numero Pagamento"] == "0"], on="partial_date", how='right')
         data_time = pd.to_datetime(df_check_negozio['Data']).dt.tz_localize(None)
         paid_time = pd.to_datetime(df_check_negozio['Paid at']).dt.tz_localize(None)
         df_check_negozio['Time_difference'] = (data_time - paid_time).abs()   
-
-        print(df_check_negozio["Time_difference"]) 
 
         df_check_negozio = self.apply_checks(df_check_negozio, satispay=True)
 

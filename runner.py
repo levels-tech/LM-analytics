@@ -24,6 +24,38 @@ class MatcherRunner:
                 return "-".join(date_str.split("-")[::-1])
         return date_str  # Return as-is if already starts with "2024"
 
+    def check_partially_refunded(self, df_check):
+        
+        # partially_refunded_names = df_check[(df_check["Financial Status"] == "partially_refunded") & (df_check["CHECK"] != "VERO")]["Name"].unique()
+        # partially_paid_names = df_check[(df_check["Financial Status"] == "partially_paid") & (df_check["CHECK"] != "VERO")]["Name"].unique()
+        # refunded_names = df_check[(df_check["Financial Status"] == "refunded") & (df_check["CHECK"] != "VERO")]["Name"].unique()
+        altro = df_check[((df_check["Outstanding Balance"] != 0) | df_check["Refunded Amount"] != 0)  &
+                        #  (df_check["CHECK"] != "VERO") &
+                         (df_check['Importo Pagato'].isna()) & 
+                         (df_check['Total'] != 0)]["Name"].unique()
+
+        for name in altro:
+            name_mask = df_check["Name"] == name
+            if name_mask.any():  # Check if any rows match
+                amount = df_check.loc[name_mask, "Importo Pagato"].values[0] if not pd.isna(df_check.loc[name_mask, "Importo Pagato"].values[0]) else 0
+                new_total = df_check.loc[name_mask, "Subtotal"].values[0] + df_check.loc[name_mask, "Shipping"].values[0] - df_check.loc[name_mask, "Refunded Amount"].values[0] - df_check.loc[name_mask, "Outstanding Balance"].values[0]
+                if new_total == amount and new_total != 0:
+                    df_check.loc[name_mask, "Total"] = new_total
+                    df_check.loc[name_mask, "CHECK"] = "VERO"
+                elif new_total == amount and new_total == 0:
+                    df_check.loc[name_mask, "Total"] = 0
+                    df_check.loc[name_mask, "Lineitem quantity"] = 0
+                    df_check.loc[name_mask, "CHECK"] = "VERO"
+                elif abs(new_total - amount) <= 1 and new_total <= 1:
+                    df_check.loc[name_mask, "Total"] = 0
+                    df_check.loc[name_mask, "Lineitem quantity"] = 0
+                    df_check.loc[name_mask, "CHECK"] = "VERO"
+                    df_check.loc[name_mask, "Importo Pagato"] == 0
+                else:
+                    df_check.loc[name_mask, 'note_interne'] = "Pagamento non trovato"
+        return df_check
+
+
     def run_all_matchers(self, mese, anno=2024):
         try:
             all_dfs = []
@@ -68,21 +100,18 @@ class MatcherRunner:
             self.df_ordini_all.loc[(self.df_ordini_all['Importo Pagato'].isna()) & 
                                    (self.df_ordini_all['note_interne'] == "Gift Card only"), "Importo Pagato"] = 0
             
+            self.df_ordini_all = self.check_partially_refunded(self.df_ordini_all)
+            
             # Select columns from each DataFrame in all_dfs before concatenating
-            df_pagamenti = pd.concat([df#[["Name", "Metodo", "Data", "Numero Pagamento", "Importo Pagato", "Brand", "CHECK", "note_interne"]] 
-                                      for df in all_dfs], 
-                                      ignore_index=True)
+            df_pagamenti = pd.concat([df for df in all_dfs], ignore_index=True)
             
             mask = self.df_ordini_all["note_interne"] == "Metodo di pagamento ignoto"
             self.df_ordini_all["giorno"] = self.df_ordini_all['Paid at'].apply(self.reformat_date)
             df_pagamenti["giorno"] = df_pagamenti['Data'].apply(self.reformat_date)
             self.df_ordini_all["index_df"] = self.df_ordini_all.index
             df_pagamenti["index_pag"] = df_pagamenti.index
-            # print(self.df_ordini_all[mask])
-            # print(df_pagamenti[df_pagamenti["CHECK"] == "NON TROVATO"])
             merged = pd.merge(self.df_ordini_all[mask], df_pagamenti[df_pagamenti["CHECK"] == "NON TROVATO"], left_on=["Total", "giorno"], right_on = ["Importo Pagato", "giorno"], how = "inner")
             
-            print(merged)
             if len(merged) > 0:
                 for _, row in merged.iterrows():
                     idx_df = row["index_df"] 
@@ -92,8 +121,8 @@ class MatcherRunner:
                     self.df_ordini_all.loc[idx_df, "CHECK"] = "VERO"
                     self.df_ordini_all.loc[idx_df, "note_interne"] = np.nan
                     df_pagamenti.loc[idx_pag, "CHECK"] = "VERO"
-                    print(self.df_ordini_all.loc[idx_df, "Payment Method"])
-                    print(df_pagamenti.loc[idx_pag, "CHECK"])
+                
+            self.df_ordini_all.loc[mask & (self.df_ordini_all["CHECK"] != "VERO"), "note_interne"] = "Pagamento non trovato"
             
             # Checking for inconsistencies in "Total" using explicit length check
             inconsistent_groups = self.df_ordini_all.groupby('Name').filter(lambda group: group['Total'].nunique() > 1)
@@ -101,11 +130,6 @@ class MatcherRunner:
                 print(f"Inconsistent 'Total' values detected for the following 'Names':\n{inconsistent_groups}")
             else:
                 print("All 'Names' have consistent 'Total' values.")
-
-            print()
-
-            print(self.df_ordini_all["note_interne"].value_counts(), self.df_ordini_all["note_interne"].isna().sum())
-            print(self.df_ordini_all["CHECK"].value_counts(), self.df_ordini_all["CHECK"].isna().sum())
 
             return self.df_ordini_all, df_pagamenti, self.columns
         
