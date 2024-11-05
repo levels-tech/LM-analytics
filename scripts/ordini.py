@@ -154,6 +154,12 @@ class Ordini:
         self.df.loc[mask, "CHECK"] = "FALSO"
         self.df.loc[mask, "note_interne"] = "Gift Card only"
 
+        gift_card_names = self.df[self.df["Payment Method"].str.contains("Gift Card") & 
+                                  self.df["Payment Method"].str.contains(r"\+")]["Name"].unique()
+        mask = self.df["Name"].isin(gift_card_names)
+        self.df.loc[mask, "CHECK"] = "FALSO"
+        self.df.loc[mask, "note_interne"] = "Gift Card"
+
     #gestire la location
     def handle_location(self):
 

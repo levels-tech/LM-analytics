@@ -31,7 +31,7 @@ def check_all_updates_saved():
 st.set_page_config(layout="wide")
 
 colonne = ['Name', "Importo Pagato",  "Total", 'Shipping', 'Discount Code', 'Discount Amount', 'Paid at', 'Payment Method',
-            # "note_interne", 
+            "note_interne", 
             'Email', 'Financial Status', 'Currency', 
            'Lineitem quantity', 'Lineitem name', 'Lineitem price', 'Lineitem compare at price', 'Refunded Amount', 'Outstanding Balance','Location',]               
 
@@ -104,7 +104,6 @@ if process_button:
 if st.session_state.processed_data is not None and st.session_state.pagamenti is not None:    
     st.session_state.processed_data['index'] = st.session_state.processed_data.index 
     st.session_state.pagamenti['index'] = st.session_state.pagamenti.index 
-
 
     # Display LIL Milan results that need checking
     df_rilevante = st.session_state.processed_data[(st.session_state.processed_data["note_interne"] != "Non rilevante")].copy()
