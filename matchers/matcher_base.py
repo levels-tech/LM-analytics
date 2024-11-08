@@ -2,7 +2,10 @@
 #RESTITUISCE IL DF DEI MATCH CHE SERVE PER MOSTRARE I CASI DA CONTROLLARE, IL DF DEGLI ORDINI ULTERIORMENTE CONTROLLATI E IL DF DEI PAGAMENTI CON AGGIUNTA COLONNA CHECK
 
 import pandas as pd
-import numpy as np
+import io
+
+
+from utils.functions import find_header_row, reformat_date, check_partially_refunded
 
 class PaymentMatcher:
     payment_info_list = [] 
@@ -10,6 +13,43 @@ class PaymentMatcher:
     def __init__(self, uploaded_files, df_ordini):
         self.uploaded_files = uploaded_files
         self.df_ordini = df_ordini
+
+
+
+    def handle_load_data(self, name, mese, anno):
+
+        date_column = { "Bonifici": "Data",
+                        "Paypal": "Data",
+                        "Qromo": "Data",
+                        "Satispay": "payment_date",
+                        "Scalapay": "Data acquisto/rimborso",
+                        "Shopify AGEE": "Transaction Date",
+                        "Shopify LIL": "Transaction Date"}
+
+        expected_date =  f"{str(anno)}-{str(mese):02}"
+        f_file = self.uploaded_files.get(name, {}).get("file")
+        
+        if f_file: 
+            if name == "Bonifici":
+                excel_file = io.BytesIO(f_file.getvalue())
+                f = find_header_row(excel_file, "Importo")
+            elif name == "Qromo":
+                csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))
+                f = pd.read_csv(csv_file, dtype={date_column[name]: "string"}, thousands='.', decimal=",")
+            else:
+                csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))
+                f = pd.read_csv(csv_file, dtype={date_column[name]: "string"})
+            
+            f["giorno"] = f[date_column[name]].apply(reformat_date)
+            f_filtered = f[(f["giorno"].str[:7] == expected_date) | (f["giorno"].isna())].copy()
+
+        else:
+            f_filtered = pd.DataFrame()
+           
+        return f_filtered
+    
+
+
 
     #fare check per vero/falso/non trovato
     def check_values(self, row):
@@ -23,46 +63,22 @@ class PaymentMatcher:
         else:
             return "FALSO"
 
-    # #Calcolare valore teorico della gift card
-    # def calculate_gift_card(self, row):
-    #     if row["CHECK"] != "VERO" and "Gift Card" in str(row["Payment Method"]):
-    #         return "Gift Card"
-    #     else:
-    #         return np.nan
-
     #cambiare valore a VERO per differenze di centesimi (e cambiare anche totale)
     def check_cents_diff(seld, df_check):
         for index, row in df_check.iterrows():
             if row["CHECK"] == "FALSO":
                 diff = abs(row["Total"] - row["Importo Pagato"])
-                if diff <= 0.05:
+                if diff <= 1:
                     df_check.at[index, "Total"] = row["Importo Pagato"]
                     df_check.at[index, "CHECK"] = "VERO" 
 
-                if diff <= 1 and df_check.at[index, "Total"] == 0:
-                    df_check.at[index, "Importo Pagato"] = 0
-                    df_check.at[index, "CHECK"] = "VERO" 
-
-
-        return df_check
-
-    #controlla se ci sono pagamenti non trovati    
-    def check_non_trovato(self, df_check):
-        nomi = df_check.loc[(df_check["CHECK"] == "NON TROVATO")]["Name"]
-        
-        if len(nomi) == 0:
-            return df_check
-        
-        for name, group in df_check.groupby('Name'):
-            if name in nomi.values:
-                df_check.loc[group.index, "note_interne"] = "Pagamento non trovato"
         return df_check
     
     #controlla se il discount è giusto
     def check_resi(self, df_check):
         
         nomi = df_check.loc[(df_check["CHECK"] == "FALSO") & 
-                        (df_check["note_interne"] != "Gift Card") & 
+                        (~df_check["Payment Method"].str.contains("Gift Card", na=False)) & 
                         (df_check["Lineitem compare at price"] == 0)]["Name"]
     
         # If nomi is empty, return df_check unchanged
@@ -108,8 +124,6 @@ class PaymentMatcher:
                             df_check.loc[group.index, 'Total'] = new_total
                             df_check.loc[group.index, 'Discount Amount'] = calculated_discount
                             df_check.loc[group.index, 'CHECK'] = "VERO"
-                        else:
-                            df_check.loc[group.index, 'note_interne'] = "Sconto dubbio"
                             
 
                     elif len(primi_items_gioielli) > 1 and item_comprato_dopo_price > 10:
@@ -135,14 +149,9 @@ class PaymentMatcher:
                                 df_check.loc[group.index, 'Total'] = new_total
                                 df_check.loc[group.index, 'Discount Amount'] = calculated_discount
                                 df_check.loc[group.index, 'CHECK'] = "VERO"
-                            else:
-                                df_check.loc[group.index, 'note_interne'] = "Sconto dubbio"
 
                     elif len(primi_items_gioielli) >= 1 and item_comprato_dopo_price <= 10:
                         pass
-
-                    else:
-                        df_check.loc[group.index, 'note_interne'] = "Reso dubbio"
                             
                 #più oggeti sono stati scambiati
                 elif len(items_comprati_dopo) == 2:
@@ -168,8 +177,6 @@ class PaymentMatcher:
 
                         items_tenuti_prices = (primi_items.loc[~primi_items.index.isin(tutti_gioielli_tranne_ultimo.index)].apply(lambda row: row['Lineitem price'] * row['Lineitem quantity'], axis=1)
                                             .sum()) + (ultimo_item_tenuto_price * ultimo_item_tenuto_quantity) #primi items acquistati che non sono gioielli + item comprato dopo
-                        
-                        # items_restituiti_prices = (tutti_gioielli_tranne_ultimo.apply(lambda row: row['Lineitem price'] * row['Lineitem quantity'], axis=1).sum())
                     
                         new_total = total + discount - calculated_discount
                         check_total = items_tenuti_prices + shipping - calculated_discount
@@ -178,89 +185,7 @@ class PaymentMatcher:
                             df_check.loc[group.index, 'Total'] = new_total
                             df_check.loc[group.index, 'Discount Amount'] = calculated_discount
                             df_check.loc[group.index, 'CHECK'] = "VERO"
-                        else:
-                            df_check.loc[group.index, 'note_interne'] = "Sconto dubbio"
 
-                    else:
-                        df_check.loc[group.index, 'note_interne'] = "Reso dubbio"
-                
-                else:
-                    df_check.loc[group.index, 'note_interne'] = "Reso dubbio"
-
-        return df_check
-
-    # PARTIALLY_REFUNDED handling
-    def check_partially_refunded(self, df_check):
-        
-        altro = df_check[((df_check["Outstanding Balance"] != 0) | df_check["Refunded Amount"] != 0) & (df_check["CHECK"] != "VERO") & (df_check["note_interne"] != "Reso dubbio")]["Name"].unique()
-
-        for name in altro:
-            name_mask = df_check["Name"] == name
-            if name_mask.any():  # Check if any rows match
-                amount = df_check.loc[name_mask, "Importo Pagato"].values[0] if not pd.isna(df_check.loc[name_mask, "Importo Pagato"].values[0]) else 0
-                new_total = df_check.loc[name_mask, "Subtotal"].values[0] + df_check.loc[name_mask, "Shipping"].values[0] - df_check.loc[name_mask, "Refunded Amount"].values[0] - df_check.loc[name_mask, "Outstanding Balance"].values[0]
-                if new_total == amount and new_total != 0:
-                    df_check.loc[name_mask, "Total"] = new_total
-                    df_check.loc[name_mask, "CHECK"] = "VERO"
-                elif new_total == amount and new_total == 0:
-                    df_check.loc[name_mask, "Total"] = 0
-                    df_check.loc[name_mask, "Lineitem quantity"] = 0
-                    df_check.loc[name_mask, "CHECK"] = "VERO"
-                elif abs(new_total - amount) <= 1 and new_total <= 1:
-                    df_check.loc[name_mask, "Total"] = 0
-                    df_check.loc[name_mask, "Lineitem quantity"] = 0
-                    df_check.loc[name_mask, "CHECK"] = "VERO"
-                    df_check.loc[name_mask, "Importo Pagato"] == 0
-                else:
-                    df_check.loc[name_mask, 'note_interne'] = "Rimborso dubbio"
-
-        # #partially_refunded
-        # for name in partially_refunded_names:
-        #     name_mask = df_check["Name"] == name
-        #     if name_mask.any():  # Check if any rows match
-        #         amount = df_check.loc[name_mask, "Importo Pagato"].values[0]
-        #         new_total = df_check.loc[name_mask, "Total"].values[0] - df_check.loc[name_mask, "Refunded Amount"].values[0]
-        #         if new_total == amount:
-        #             df_check.loc[name_mask, "Total"] = new_total
-        #             df_check.loc[name_mask, "CHECK"] = "VERO"
-        #         else:
-        #             df_check.loc[name_mask, 'note_interne'] = "Rimborso dubbio"
-
-        # #partially_paid
-        # for name in partially_paid_names:
-        #     name_mask = df_check["Name"] == name
-        #     if name_mask.any():
-        #         amount = df_check.loc[name_mask, "Importo Pagato"].values[0]
-        #         new_total = df_check.loc[name_mask, "Total"].values[0] - df_check.loc[name_mask, "Outstanding Balance"].values[0]
-        #         if new_total == amount:
-        #             df_check.loc[name_mask, "Total"] = new_total
-        #             df_check.loc[name_mask, "CHECK"] = "VERO"
-        #         else:
-        #             df_check.loc[name_mask, 'note_interne'] = "Pagamento parziale dubbio"
-    
-    
-        # #refunded
-        # for name in refunded_names:
-        #     name_mask = df_check["Name"] == name
-        #     if name_mask.any():
-        #         total_value = df_check.loc[name_mask, "Total"].values[0]
-        #         refunded_amount = df_check.loc[name_mask, "Refunded Amount"].values[0]
-        #         if total_value != 0:
-        #             diff = abs(total_value - refunded_amount)
-        #             if diff == 0:
-        #                 df_check.loc[name_mask, "Total"] = 0
-        #                 df_check.loc[name_mask, "Lineitem quantity"] = 0
-        #                 df_check.loc[name_mask, "CHECK"] = "VERO"
-        #             elif diff <= 1:
-        #                 df_check.loc[name_mask, "Total"] = 0
-        #                 df_check.loc[name_mask, "Lineitem quantity"] = 0
-        #                 df_check.loc[name_mask, "CHECK"] = "VERO"
-        #                 df_check.loc[name_mask, "Importo Pagato"] == 0
-        #             else:
-        #                 df_check.loc[name_mask, 'note_interne'] = "Rimborso dubbio"    
-
-                  
-        
         return df_check
            
     #Controlla se ci sono stati più pagamenti con lo stesso numero di ordine
@@ -318,27 +243,47 @@ class PaymentMatcher:
         for index, row in df_check.iterrows():
             if row["CHECK"] == "FALSO" and row["Valuta"] != "EUR":
                 row["Euro"] = row["Importo Pagato"] * get_valute[row["Valuta"]]
-                row["note_interne"] = "Valuta non Euro"
                 if (row["Total"] - 10) < row["Euro"] < (row["Total"] + 10):
                     df_check.at[index, "Importo Pagato"] = row["Euro"] 
                     df_check.at[index, "CHECK"] = "VERO" 
-                else:
-                    df_check.at[index, "note_interne"] = "Valuta check" 
         df_check = df_check.drop("Euro", axis = 1)
 
         return df_check
     
 
+    def choose_merges(self, df_check):
+        
+        names = df_check["Numero Pagamento"].unique()
+      
+        for n in names:
+            f = df_check[(df_check["Numero Pagamento"] == n)]
+            if f['Time_difference'].isna().all():
+                print(f"All 'Time_difference' values are NaN for Numero Pagamento {n}")
+                continue  # Skip this iteration if all values are NaN
+            min_days_idx = f['Time_difference'].idxmin()
+            order = f.loc[min_days_idx, "Name"]
+            rows_to_drop = df_check[(df_check["Name"] == order) & (df_check["Numero Pagamento"] != n)]
+            df_check = df_check.drop(rows_to_drop.index, axis = 0)
+        
+        return df_check
+    
+
     #applica tutti i check
-    def apply_checks(self, df_check, valuta = False, qromo = False, satispay = False, double_payments = False):
+    def apply_checks(self, df_check, valuta = False, qromo = False, satispay = False, bonifico = False, double_payments = False):
+
+        if bonifico == True:
+            df_check = self.choose_merges(df_check)
+
         df_check["CHECK"] = df_check.apply(lambda row: self.check_values(row), axis=1)
-        # df_check["note_interne"] = df_check.apply(lambda row: self.calculate_gift_card(row), axis=1)
+        print(df_check["CHECK"].value_counts())
         df_check = self.check_cents_diff(df_check)
 
         if qromo == True:
             filtered_df = df_check[df_check['CHECK'] != "NON TROVATO"]
             paid_at = filtered_df['Paid at'].str.replace(r'\s[+-]\d{4}$', '', regex=True)
-            filtered_df['Time_difference'] = (pd.to_datetime(filtered_df['Data']).dt.tz_localize(None) - pd.to_datetime(paid_at, errors="coerce").dt.tz_localize(None)).abs() 
+            filtered_df['Time_difference'] = pd.to_datetime(paid_at, errors="coerce").dt.tz_localize(None) - pd.to_datetime(filtered_df['Data']).dt.tz_localize(None)
+            filtered_df = filtered_df[(filtered_df['Time_difference'] >= pd.Timedelta(0)) | filtered_df['Time_difference'].isna()]
+
             min_indices = filtered_df.groupby(['Name', "Lineitem name", 'CHECK'])['Time_difference'].idxmin()
             df_min_time_diff = df_check.loc[min_indices]
 
@@ -351,8 +296,8 @@ class PaymentMatcher:
         elif satispay == True:
             df_check = df_check.loc[df_check.groupby(['CHECK', "Data"])['Time_difference'].idxmin()]
         
-            names_with_vero = df_check[(df_check['CHECK'] == 'VERO')]['Data'].unique()
-            df_check = df_check[~((df_check['CHECK'] == 'FALSO') & (df_check['Data'].isin(names_with_vero)))]
+            names_with_vero = df_check[(df_check['CHECK'] == 'VERO')]['Name'].unique()
+            df_check = df_check[~((df_check['CHECK'] == 'FALSO') & (df_check['Name'].isin(names_with_vero)))] #elimino le righe con ordini che sono già stati matchati
             df_check["Payment Method"] = "Satispay"
 
             for n in names_with_vero:
@@ -362,15 +307,13 @@ class PaymentMatcher:
             df_check = self.check_double_payments(df_check)
 
         df_check = self.check_resi(df_check)
-        df_check = self.check_partially_refunded(df_check)
+        df_check = check_partially_refunded(df_check)
 
         if valuta == True:
             df_check = self.check_valuta(df_check) 
 
-        df_check = self.check_non_trovato(df_check) #prima era tra satispay e valuta!
-
         cols = df_check.columns.tolist()
-        cols = [col for col in cols if col not in ["CHECK", "note_interne"]] + ["CHECK", "note_interne"]
+        cols = [col for col in cols if col not in ["CHECK"]] + ["CHECK"]
         df_check = df_check[cols]
         
         return df_check

@@ -61,12 +61,13 @@ class OrderSummary:
                 # Write order sheets first (these are needed for the summary tables)
                 if mask_lil_o.any(): 
                     lil = self.df_ordini_all[mask_lil_o]
-                    lil = lil[df_columns]
+                    # lil = lil[df_columns]
+                    # lil = lil
                     lil.to_excel(writer, sheet_name='Ordini LIL', index=False)
                 
                 if mask_agee_o.any():
                     agee = self.df_ordini_all[mask_agee_o]
-                    agee = agee[df_columns]
+                    # agee = agee[df_columns]
                     agee.to_excel(writer, sheet_name='Ordini AGEE', index=False)
 
                 # Write payment sheets
@@ -78,28 +79,28 @@ class OrderSummary:
                         payment_name_lil = p.split()[0] + "_LIL"
                         filtered_df_lil = self.pagamenti[mask_lil_p & (self.pagamenti["Metodo"] == p)]
 
-                        if not filtered_df_lil.empty:
-                            matching_columns = next((cols for key, cols in pagamenti_columns.items() 
-                                                     if key == p), None)
+                        # if not filtered_df_lil.empty:
+                        #     matching_columns = next((cols for key, cols in pagamenti_columns.items() 
+                        #                              if key == p), None)
                 
-                            # Filter columns if match found
-                            if len(matching_columns) > 0:
-                                filtered_df_lil = filtered_df_lil[matching_columns]
-                            filtered_df_lil.to_excel(writer, sheet_name=payment_name_lil, index=False)
+                        #     # Filter columns if match found
+                        #     if len(matching_columns) > 0:
+                        #         filtered_df_lil = filtered_df_lil[matching_columns]
+                        filtered_df_lil.to_excel(writer, sheet_name=payment_name_lil, index=False)
 
                 if mask_agee_p.any():
                     for p in self.pagamenti["Metodo"].unique():
                         payment_name_agee = p.split()[0] + "_AGEE"
                         filtered_df_agee = self.pagamenti[mask_agee_p & (self.pagamenti["Metodo"] == p)]
                         
-                        if not filtered_df_agee.empty:
-                            matching_columns = next((cols for key, cols in pagamenti_columns.items() 
-                                                if key == p), None)
+                        # if not filtered_df_agee.empty:
+                        #     matching_columns = next((cols for key, cols in pagamenti_columns.items() 
+                        #                         if key == p), None)
 
-                            # Filter columns if match found
-                            if len(matching_columns) > 0:
-                                filtered_df_agee = filtered_df_agee[matching_columns]
-                            filtered_df_agee.to_excel(writer, sheet_name=payment_name_agee, index=False)
+                        #     # Filter columns if match found
+                        #     if len(matching_columns) > 0:
+                        #         filtered_df_agee = filtered_df_agee[matching_columns]
+                        filtered_df_agee.to_excel(writer, sheet_name=payment_name_agee, index=False)
 
             # Now create the summary tables after all required sheets exist
             self.create_summary_table()  # This creates 'Totale' sheet

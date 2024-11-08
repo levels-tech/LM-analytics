@@ -9,30 +9,14 @@ class SatispayMatcher(PaymentMatcher):
 
     def match(self, mese, anno):
 
-        satispay_file = self.uploaded_files.get("Satispay")
+        df_full = self.handle_load_data("Satispay", mese, anno)
         
-        if not satispay_file:
+        if len(df_full) == 0:
             raise SkipMatcherException("Non ci sono pagamenti con Satispay")
         
-        # Process the file and proceed with matching
-        df_full = pd.read_csv(satispay_file)
         columns = df_full.columns
 
-        expected_date = f"{anno}-{mese:02}"
-        df_na = df_full[df_full["payment_date"].isna()]
-        df_filtered = df_full[df_full["payment_date"].str[:7] == expected_date].copy()
-
-        if len(df_filtered) == 0:
-            found_dates = sorted(df_full["payment_date"].str[:7].unique())
-            raise DateMismatchError(
-                message=f"Nessun pagamento con satispay trovato per il periodo {expected_date}",
-                details=(f"Date disponibili nel file: {', '.join(found_dates)}\n"
-                        "Selezionare un periodo presente nel file o caricare il file corretto."))
-        else:
-            df_full = pd.concat([df_filtered, df_na])
-
         df = df_full[['payment_date', 'total_amount', 'description']]
-        print("datetime1")
         df['partial_date'] = pd.to_datetime(df['payment_date']).dt.tz_localize(None).dt.date
         df = df.rename(columns={"description": "Numero Pagamento", "payment_date": "Data", "total_amount": "Importo Pagato"})
 
@@ -50,7 +34,8 @@ class SatispayMatcher(PaymentMatcher):
         df_check_negozio = pd.merge(df_ordini_negozio, df[df["Numero Pagamento"] == "0"], on="partial_date", how='right')
         data_time = pd.to_datetime(df_check_negozio['Data']).dt.tz_localize(None)
         paid_time = pd.to_datetime(df_check_negozio['Paid at'], errors="coerce").dt.tz_localize(None)
-        df_check_negozio['Time_difference'] = (data_time - paid_time).abs()   
+        df_check_negozio['Time_difference'] = paid_time - data_time  
+        df_check_negozio = df_check_negozio[(df_check_negozio['Time_difference'] >= pd.Timedelta(0)) | df_check_negozio['Time_difference'].isna()]
 
         df_check_negozio = self.apply_checks(df_check_negozio, satispay=True)
 
@@ -61,7 +46,7 @@ class SatispayMatcher(PaymentMatcher):
 
         df_check.loc[mask & df_check["Payment Method"].str.contains("Satispay"), "Payment Method"] = "Satispay"
 
-        df_full = pd.merge(df_full, df_check[["Name", "Data", "Numero Pagamento", "Importo Pagato", "Brand", "CHECK", "note_interne"]], left_on = ["payment_date", "description"], right_on = ["Data", "Numero Pagamento"], how = "left")
+        df_full = pd.merge(df_full, df_check[["Name", "Data", "Numero Pagamento", "Importo Pagato", "Brand", "CHECK"]], left_on = ["payment_date", "description"], right_on = ["Data", "Numero Pagamento"], how = "left")
         df_full = df_full.drop_duplicates(subset=columns)
         df_full["CHECK"] = df_full["CHECK"].fillna("NON TROVATO")
         df_full["Metodo"] = "Satispay"

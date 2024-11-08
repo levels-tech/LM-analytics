@@ -2,6 +2,7 @@
 
 import pandas as pd
 from utils.exceptions import DateMismatchError
+import io
 
 class Ordini:
     def __init__(self, uploaded_files, mese, anno):
@@ -16,152 +17,70 @@ class Ordini:
         self.colonne = None
 
 
+
+    def handle_data_upload(self, name):
+
+        f_file = self.uploaded_files.get(name, {}).get("file")
+
+        if f_file:
+
+            stringio = io.StringIO(f_file.getvalue().decode("utf-8"))
+            f = pd.read_csv(stringio, dtype={"Paid at": "string",'Lineitem sku': 'string'})  # Read the CSV data
+        
+            f["Brand"] = name
+            f[f.columns] = f.groupby('Name')[f.columns].ffill()
+
+            expected_date = f"{self.anno}-{str(self.mese).zfill(2)}"
+            f_filtered = f[(f["Paid at"].str[:7] == expected_date) | (f["Paid at"].isna())].copy()
+        else:
+            f_filtered = pd.DataFrame()  # or handle the missing file as needed
+
+        return f_filtered
+    
+
 # scripts/your_processing_file.py
     def load_data(self):
 
-        lil_file = self.uploaded_files.get("Ordini LIL")
-        agee_file = self.uploaded_files.get("Ordini AGEE")
+        lil = self.handle_data_upload("Ordini LIL")
+        agee = self.handle_data_upload("Ordini AGEE")
 
-        if lil_file:
-            # Read the file
-            lil = pd.read_csv(lil_file, 
-                            dtype={"Paid at": "string",
-                                    'Lineitem sku': 'string', 
-                                    'Device ID': 'string', 
-                                    'Id': 'string', 
-                                    "Tags": "string", 
-                                    "Next Payment Due At": "string"})
-            lil["Brand"] = "LIL Milan"
-            # Forward-fill NaN values for the same Name
-            lil[lil.columns] = lil.groupby('Name')[lil.columns].ffill()
-            lil_na = lil[lil["Paid at"].isna()]
+        print(lil, agee)
 
-            # Format month for comparison
-            expected_date = f"{self.anno}-{str(self.mese).zfill(2)}"
-            lil_filtered = lil[lil["Paid at"].str[:7] == expected_date].copy()
-            lil = pd.concat([lil_filtered, lil_na])
-
-            # If no rows match the date criteria
-            if len(lil_filtered) == 0:
-                found_dates = sorted(lil["Paid at"].str[:7].unique())
-                raise DateMismatchError(
-                    message=f"Nessun ordine di LIL trovato per il periodo {expected_date}",
-                    details=(f"Date disponibili nel file: {', '.join(found_dates)}\n"
-                            "Selezionare un periodo presente nel file o caricare il file corretto."))
-        else:
-            lil = pd.DataFrame()  # or handle the missing file as needed
-
-            # assicurarsi che esista
-        if agee_file:
-            agee = pd.read_csv(agee_file, dtype={"Paid at": "string", 'Lineitem sku': 'string', 'Device ID': 'string', 'Id': 'string', "Tags": "string", "Next Payment Due At": "string"})
-            agee["Brand"] = "AGEE"
-            agee[agee.columns] = agee.groupby('Name')[agee.columns].ffill()
-            agee_na = agee[agee["Paid at"].isna()]
-        
-            # Format month for comparison
-            expected_date = f"{self.anno}-{str(self.mese).zfill(2)}"
-            agee_filtered = agee[agee["Paid at"].str[:7] == expected_date].copy()
-            agee = pd.concat([agee_filtered, agee_na])
-
-            if len(agee_filtered) == 0:
-                found_dates = sorted(agee["Paid at"].str[:7].unique())
-                raise DateMismatchError(
-                    message=f"Nessun ordine di AGEE trovato per il periodo {expected_date}",
-                    details=(f"Date disponibili nel file: {', '.join(found_dates)}\n"
-                            "Selezionare un periodo presente nel file o caricare il file corretto."))
-        else:
-            agee = pd.DataFrame()  # or handle the missing file as needed
-
-        # Concatenate dataframes if both are available
         self.df = pd.concat([lil, agee], ignore_index=True) if len(lil) > 0 or len(agee) > 0 else pd.DataFrame()
 
         self.colonne = self.df.columns
-        print(self.colonne)
 
     #gestire i nomi dei pagamenti
-    def handle_payments(self):
+    def handle_payment_method(self):
+        print(self.df.columns)
+
 
         self.df["Payment Method"] = self.df["Payment Method"].str.replace("Custom (POS)", "Qromo")
         self.df["Payment Method"] = self.df["Payment Method"].str.replace("custom|Wire Transfer", "Bonifico", regex=True)
 
-        # Define the list of payments and create a regex pattern, 
         payments = ["Bonifico", "PayPal Express Checkout", "Qromo", "Satispay", "Scalapay", "Shopify Payments", "Gift Card", "Cash"]
         pattern = '|'.join(payments) 
 
         # Check if "Payment Method" contains any of the payment methods in the list
         self.df["CHECK"] = self.df["Payment Method"].apply(lambda x: "PAGAMENTO ALTRO" if pd.notna(x) and not pd.Series(x).str.contains(pattern, regex=True).any() else None)
-        self.df["note_interne"] = self.df["CHECK"].apply(lambda x: "Metodo di pagamento ignoto" if x == "PAGAMENTO ALTRO" else None)
 
+        #Gestire Cash
         cash_names = self.df[self.df["Payment Method"] == "Cash"]["Name"].unique()
         mask = self.df["Name"].isin(cash_names)
-        self.df.loc[mask, "CHECK"] = "CASH"
-        self.df.loc[mask, "note_interne"] = "Non rilevante"
-        
-    #gestire PARTIALLY_PAID/PARTIALLY_REFUNDED E REFUNDED di Cash only
-    def adjust_financial_status(self):
-        
-        nomi = self.df[((self.df["Outstanding Balance"] != 0) | self.df["Refunded Amount"] != 0) & ((self.df["Payment Method"] == "Cash") | (self.df["Payment Method"].isna()))]["Name"].unique()
-        # nomi = self.df[(self.df["Financial Status"] == "partially_paid") & (self.df["Payment Method"] == "Cash")]["Name"].unique()
+        self.df.loc[mask, "CHECK"] = "ESCLUSO" 
 
-        for name in nomi:
-            name_mask = self.df["Name"] == name
-            
-            if name_mask.any():  # Check if any rows match
-                new_total = self.df.loc[name_mask, "Total"].values[0] - self.df.loc[name_mask, "Refunded Amount"].values[0] - self.df.loc[name_mask, "Outstanding Balance"].values[0]
-                if new_total > 0:
-                    self.df.loc[name_mask, "Total"] = new_total
-                elif new_total == 0:
-                    self.df.loc[name_mask, "Total"] = 0
-                    self.df.loc[name_mask, "Lineitem quantity"] = 0
-                else:
-                    self.df.loc[name_mask, 'note_interne'] = "Rimborso dubbio"
-
-        #vecchia versione
-        # # Apply the mask as before
-        # for name in nomi:
-        #     name_mask = self.df["Name"] == name
-        #     new_total = self.df.loc[name_mask, "Total"].values[0] - self.df.loc[name_mask, "Outstanding Balance"].values[0]
-        #     if new_total >= 0:
-        #         self.df.loc[name_mask, "Total"] = new_total
-
-    #sconti del 100%
-    def handle_discounts(self):
-        self.df["Payment Method"] = self.df["Payment Method"].str.strip()
-        sconto100_names = self.df[(self.df["Payment Method"].isna()) & 
-                                  (self.df["Total"] == 0)]["Name"].unique()
-        for name in sconto100_names:
-            mask = self.df["Name"] == name
-            self.df.loc[mask, "CHECK"] = "SCONTO100"
-            self.df.loc[mask, "note_interne"] = "Non rilevante"
-
-    #aggiungere country se manca
-    def adjust_country(self):   
-
-        #"LIL Milan"
-        self.df.loc[((self.df["Brand"] == "LIL Milan") & 
-                    ((self.df["Shipping Method"] == "Firgun House") | (self.df["Shipping Method"].isna()))) & 
-                    (self.df["Shipping Country"].isna()), "Shipping Country"] = "IT"
-        
-        #"AGEE"
-        self.df.loc[((self.df["Brand"] == "AGEE") & 
-                    (self.df["Shipping Method"] == "Standard") | (self.df["Shipping Method"].isna())) & 
-                    (self.df["Shipping Country"].isna()), "Shipping Country"] = "IT"
-
-    #gestire pagamenti SOLO con gift car
-    def handle_gift_card(self):
-        gift_card_names = self.df[self.df["Payment Method"] == "Gift Card"]["Name"].unique()
+        #gestire gift cards
+        gift_card_names = self.df[self.df["Payment Method"].str.contains("Gift Card", na=False)]["Name"].unique()
         mask = self.df["Name"].isin(gift_card_names)
         self.df.loc[mask, "CHECK"] = "FALSO"
-        self.df.loc[mask, "note_interne"] = "Gift Card only"
-
-        gift_card_names = self.df[self.df["Payment Method"].str.contains("Gift Card") & 
-                                  self.df["Payment Method"].str.contains(r"\+")]["Name"].unique()
-        mask = self.df["Name"].isin(gift_card_names)
-        self.df.loc[mask, "CHECK"] = "FALSO"
-        self.df.loc[mask, "note_interne"] = "Gift Card"
-
+        
+   
     #gestire la location
     def handle_location(self):
+
+        self.df['Location'] = self.df['Location'].str.replace(r'(?i)\blil house\b', 'LIL House', regex=True)
+        self.df['Location'] = self.df['Location'].str.replace(r'(?i)\bfirgun house\b', 'Firgun House', regex=True)
+        self.df['Location'] = self.df['Location'].str.replace(r'(?i)\blil house london\b', 'LIL House London', regex=True)
 
         #LIL Milan
         self.df.loc[(self.df['Brand'] == "LIL Milan") & 
@@ -177,20 +96,49 @@ class Ordini:
         location_nan = self.df.groupby('Name')['Location'].transform(lambda x: x.isna().all())
         self.df.loc[location_nan, 'Location'] = "Firgun House"
 
-        self.df['Location'] = self.df['Location'].str.replace(r'(?i)\blil house\b', 'LIL House', regex=True)
-        self.df['Location'] = self.df['Location'].str.replace(r'(?i)\bfirgun house\b', 'Firgun House', regex=True)
-        self.df['Location'] = self.df['Location'].str.replace(r'(?i)\blil house london\b', 'LIL House London', regex=True)
+        #metti ESCLUSO agli ordini che non ci interessano
+        relevant_locations = ["LIL House", "Firgun House", "LIL House London"]            
+        self.df.loc[~(self.df['Location'].isin(relevant_locations)) & (~self.df['Location'].isna()), "CHECK"] = "ESCLUSO"    
 
-        #metti Non rilevante agli ordini che non ci interessano
-        locations = ["LIL House", "Firgun House", "LIL House London"]            
-        self.df.loc[~(self.df['Location'].isin(locations)) & (~self.df['Location'].isna()), "note_interne"] = "Non rilevante"            
+   
+    #aggiungere country se manca
+    def handle_shipping_country(self):   
 
-    #applica le funzione ordin_con_cambi
+        #"LIL Milan"
+        self.df.loc[((self.df["Brand"] == "LIL Milan") & 
+                    ((self.df["Shipping Method"] == "Firgun House") | (self.df["Shipping Method"].isna()))) & 
+                    (self.df["Shipping Country"].isna()), "Shipping Country"] = "IT"
+        
+        #"AGEE"
+        self.df.loc[((self.df["Brand"] == "AGEE") & 
+                    (self.df["Shipping Method"] == "Standard") | (self.df["Shipping Method"].isna())) & 
+                    (self.df["Shipping Country"].isna()), "Shipping Country"] = "IT"
+
+
+    #sconti del 100%
+    def handle_discount_code(self):
+
+        self.df["Payment Method"] = self.df["Payment Method"].str.strip()
+
+        sconto100_names = self.df[((self.df["Payment Method"].isna()) & (self.df["Total"] == 0))]["Name"].unique()
+        sconto100_e_items0_names = self.df[(self.df["Discount Code"].str.contains(r"(?i)(gift|sostituzione|ddt).*100", na=False))]["Name"].unique()
+        
+        for name in sconto100_names:
+            mask = self.df["Name"] == name
+            self.df.loc[mask, "CHECK"] = "ESCLUSO"
+
+        for name in sconto100_e_items0_names:
+            mask = self.df["Name"] == name
+            self.df.loc[mask, "Lineitem quantity"] = 0
+            self.df.loc[mask, "CHECK"] = "ESCLUSO"
+   
+   
+    #applica le funzione handle_cambi
     def apply_cambi(self):
-        self.df = self.ordini_con_cambi()
+        self.df = self.handle_cambi()
 
     #gestire i cambi e modificare i totali e le quantità
-    def ordini_con_cambi(self):
+    def handle_cambi(self):
         nomi_cambi = self.df.loc[(self.df['Lineitem compare at price'] == 0) & 
                                  (self.df['Lineitem price'] != 0) & 
                                  (self.df['Total'] != 0), 'Name'].unique()
@@ -282,16 +230,55 @@ class Ordini:
                                 self.df.loc[primi_items_gioielli.index, 'Lineitem quantity'] = 0
 
         return self.df
+        #gestire PARTIALLY_PAID/PARTIALLY_REFUNDED E REFUNDED di Cash only
     
+    
+    def handle_financial_status(self):
+        
+        nomi = self.df[((self.df["Outstanding Balance"] != 0) | self.df["Refunded Amount"] != 0) & ((self.df["Payment Method"] == "Cash"))]["Name"].unique()
+
+        for name in nomi:
+            name_mask = self.df["Name"] == name
+            
+            if name_mask.any():  # Check if any rows match
+                new_total = self.df.loc[name_mask, "Total"].values[0] - self.df.loc[name_mask, "Refunded Amount"].values[0] - self.df.loc[name_mask, "Outstanding Balance"].values[0]
+                if new_total > 0:
+                    self.df.loc[name_mask, "Total"] = new_total
+                elif new_total == 0:
+                    self.df.loc[name_mask, "Total"] = 0
+                    self.df.loc[name_mask, "Lineitem quantity"] = 0
+                else:
+                    self.df.loc[name_mask, 'CHECK'] = "FALSO" 
+
+
+    def handle_nan(self):
+
+        fill_columns = ["Subtotal", "Shipping", "Total", "Discount Amount", "Refunded Amount", "Outstanding Balance"]
+        self.df[fill_columns] = self.df[fill_columns].fillna(0)
+        
+        colonne_non_na = ["Name", "Paid at", "Lineitem quantity", "Lineitem name", "Lineitem price", "Lineitem sku", 
+                        "Payment Method", "Location", "Shipping Country", "Payment References"]
+        
+        rilevanti = self.df[(self.df["CHECK"] != "ESCLUSO")]["Name"].unique()
+
+        mask_rilevanti = self.df["Name"].isin(rilevanti)
+        nan_mask = self.df[mask_rilevanti][colonne_non_na].isna().any(axis=1)
+        self.df.loc[mask_rilevanti & nan_mask, "CHECK"] = "VALORE NAN"
+
+
+
     def preprocess(self):
         # Call all preprocessing steps in sequence
         self.load_data()
-        self.handle_payments()
-        self.adjust_financial_status()
-        self.handle_discounts()
-        self.adjust_country()
-        self.handle_gift_card()
-        self.handle_location()
-        self.apply_cambi()
+        self.handle_payment_method() #1
+        self.handle_location() #2
+        self.handle_shipping_country() #3
+        self.handle_discount_code() #4
+        self.apply_cambi() #5
+        self.handle_financial_status() #6
+        self.handle_nan()#7
+
+        print(self.df.head(2), self.colonne)
+
 
         return self.df, self.colonne
