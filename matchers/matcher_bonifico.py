@@ -42,8 +42,8 @@ class BonificoMatcher(PaymentMatcher):
         paid_at = df_check['Paid at'].str.replace(r'\s[+-]\d{4}$', '', regex=True)
         df_check['Time_difference'] = (pd.to_datetime(paid_at).dt.tz_localize(None) - pd.to_datetime(df_check['Data'], errors='coerce').dt.tz_localize(None)).dt.days
         df_check = df_check[(df_check['Time_difference'] >= 0) | df_check['Time_difference'].isna()]
+        
         # Find the minimum Days_difference for each "Numero Pagamento"
-    
         df_check = self.apply_checks(df_check)
 
         mask = (df_check["Payment Method"].str.contains(r'\+') 

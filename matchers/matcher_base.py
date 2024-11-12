@@ -14,8 +14,6 @@ class PaymentMatcher:
         self.uploaded_files = uploaded_files
         self.df_ordini = df_ordini
 
-
-
     def handle_load_data(self, name, mese, anno):
 
         date_column = { "Bonifici": "Data",
@@ -48,8 +46,6 @@ class PaymentMatcher:
            
         return f_filtered
     
-
-
 
     #fare check per vero/falso/non trovato
     def check_values(self, row):
@@ -258,7 +254,6 @@ class PaymentMatcher:
         for n in names:
             f = df_check[(df_check["Numero Pagamento"] == n)]
             if f['Time_difference'].isna().all():
-                print(f"All 'Time_difference' values are NaN for Numero Pagamento {n}")
                 continue  # Skip this iteration if all values are NaN
             min_days_idx = f['Time_difference'].idxmin()
             order = f.loc[min_days_idx, "Name"]
@@ -269,39 +264,14 @@ class PaymentMatcher:
     
 
     #applica tutti i check
-    def apply_checks(self, df_check, valuta = False, qromo = False, satispay = False, bonifico = False, double_payments = False):
+    def apply_checks(self, df_check, valuta = False, bonifico = False, double_payments = False):
 
         if bonifico == True:
             df_check = self.choose_merges(df_check)
 
         df_check["CHECK"] = df_check.apply(lambda row: self.check_values(row), axis=1)
         print(df_check["CHECK"].value_counts())
-        df_check = self.check_cents_diff(df_check)
-
-        if qromo == True:
-            filtered_df = df_check[df_check['CHECK'] != "NON TROVATO"]
-            paid_at = filtered_df['Paid at'].str.replace(r'\s[+-]\d{4}$', '', regex=True)
-            filtered_df['Time_difference'] = pd.to_datetime(paid_at, errors="coerce").dt.tz_localize(None) - pd.to_datetime(filtered_df['Data']).dt.tz_localize(None)
-            filtered_df = filtered_df[(filtered_df['Time_difference'] >= pd.Timedelta(0)) | filtered_df['Time_difference'].isna()]
-
-            min_indices = filtered_df.groupby(['Name', "Lineitem name", 'CHECK'])['Time_difference'].idxmin()
-            df_min_time_diff = df_check.loc[min_indices]
-
-            df_non_trovato = df_check[df_check['CHECK'] == "NON TROVATO"]
-            df_check = pd.concat([df_min_time_diff, df_non_trovato], ignore_index=True)
-
-            names_with_vero = df_check[df_check['CHECK'] == 'VERO']['Name'].unique()
-            df_check = df_check[~((df_check['CHECK'] == 'FALSO') & (df_check['Name'].isin(names_with_vero)))]
-
-        elif satispay == True:
-            df_check = df_check.loc[df_check.groupby(['CHECK', "Data"])['Time_difference'].idxmin()]
-        
-            names_with_vero = df_check[(df_check['CHECK'] == 'VERO')]['Name'].unique()
-            df_check = df_check[~((df_check['CHECK'] == 'FALSO') & (df_check['Name'].isin(names_with_vero)))] #elimino le righe con ordini che sono già stati matchati
-            df_check["Payment Method"] = "Satispay"
-
-            for n in names_with_vero:
-                PaymentMatcher.payment_info_list.append(n)
+        df_check = self.check_cents_diff(df_check)     
         
         if double_payments == True:
             df_check = self.check_double_payments(df_check)

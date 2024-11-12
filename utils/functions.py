@@ -46,7 +46,7 @@ def check_partially_refunded(df_check, post_processing = False):
 
     else:
         altro = df_check[((df_check["Outstanding Balance"] != 0) | (df_check["Refunded Amount"] != 0)) 
-                         & ((df_check["CHECK"] == "FALSO") | (df_check["CHECK"] == "FNON TROVATO"))
+                         & ((df_check["CHECK"] == "FALSO") | (df_check["CHECK"] == "NON TROVATO"))
                          & (~(all_compare_nonzero & df_check["Total"] == (df_check["Subtotal"] + df_check["Shipping"])))
                          ]["Name"].unique()
 

@@ -44,16 +44,12 @@ class Ordini:
         lil = self.handle_data_upload("Ordini LIL")
         agee = self.handle_data_upload("Ordini AGEE")
 
-        print(lil, agee)
-
         self.df = pd.concat([lil, agee], ignore_index=True) if len(lil) > 0 or len(agee) > 0 else pd.DataFrame()
 
         self.colonne = self.df.columns
 
     #gestire i nomi dei pagamenti
     def handle_payment_method(self):
-        print(self.df.columns)
-
 
         self.df["Payment Method"] = self.df["Payment Method"].str.replace("Custom (POS)", "Qromo")
         self.df["Payment Method"] = self.df["Payment Method"].str.replace("custom|Wire Transfer", "Bonifico", regex=True)
@@ -230,12 +226,13 @@ class Ordini:
                                 self.df.loc[primi_items_gioielli.index, 'Lineitem quantity'] = 0
 
         return self.df
-        #gestire PARTIALLY_PAID/PARTIALLY_REFUNDED E REFUNDED di Cash only
     
-    
+
+    #gestire PARTIALLY_PAID/PARTIALLY_REFUNDED E REFUNDED di Cash only
     def handle_financial_status(self):
         
-        nomi = self.df[((self.df["Outstanding Balance"] != 0) | self.df["Refunded Amount"] != 0) & ((self.df["Payment Method"] == "Cash"))]["Name"].unique()
+        all_compare_nonzero = self.df.groupby("Name")["Lineitem compare at price"].transform(lambda x: (x != 0).all())
+        nomi = self.df[((self.df["Outstanding Balance"] != 0) | self.df["Refunded Amount"] != 0) & ((self.df["Payment Method"] == "Cash")) & all_compare_nonzero]["Name"].unique()
 
         for name in nomi:
             name_mask = self.df["Name"] == name
@@ -277,8 +274,5 @@ class Ordini:
         self.apply_cambi() #5
         self.handle_financial_status() #6
         self.handle_nan()#7
-
-        print(self.df.head(2), self.colonne)
-
 
         return self.df, self.colonne

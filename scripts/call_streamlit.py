@@ -62,18 +62,18 @@ def run(file_o, file_p, mese, anno):
         #run matchers
         shopify_matcher = ShopifyMatcher(file_p, df_ordini=ordini)
         scalapay_matcher = ScalapayMatcher(file_p, df_ordini=ordini)
-        satispay_matcher = SatispayMatcher(file_p, df_ordini=ordini)
         paypal_matcher = PaypalMatcher(file_p, df_ordini=ordini)
         qromo_matcher = QromoMatcher(file_p, df_ordini=ordini)
+        satispay_matcher = SatispayMatcher(file_p, df_ordini=ordini)
         bonifico_matcher = BonificoMatcher(file_p, df_ordini=ordini)
 
         # Create the matchers list
         matchers = [
             shopify_matcher,
             scalapay_matcher,
+            qromo_matcher,
             satispay_matcher,
             paypal_matcher,
-            qromo_matcher,
             bonifico_matcher
         ]
 

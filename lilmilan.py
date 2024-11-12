@@ -32,7 +32,11 @@ def check_all_updates_saved():
 
 st.set_page_config(layout="wide")
 
-colonne = ['Name', "Total", 'Shipping', 'Discount Code', 'Discount Amount', 'Paid at', 'Payment Method', 
+colonne = ["CHECK", 'Name', "Total", 'Shipping', 'Discount Code', 'Discount Amount', 'Paid at', 'Payment Method', 
+            'Email', 'Financial Status', 'Currency', 
+           'Lineitem quantity', 'Lineitem name', 'Lineitem price', 'Lineitem compare at price', "Shipping Country", 'Refunded Amount', 'Outstanding Balance','Location',]   
+
+colonne_to_drop = ["CHECK", 'Name', 'Shipping', 'Discount Code', 'Discount Amount', 'Paid at', 'Payment Method', 
             'Email', 'Financial Status', 'Currency', 
            'Lineitem quantity', 'Lineitem name', 'Lineitem price', 'Lineitem compare at price', "Shipping Country", 'Refunded Amount', 'Outstanding Balance','Location',]      
 
@@ -196,10 +200,12 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     names_count_pagamenti = len(st.session_state.pagamenti)
 
     lil_df = df_rilevante_sorted[(df_rilevante_sorted["CHECK"] != "VERO") & (df_rilevante_sorted["Brand"] == "Ordini LIL")].copy()
+    lil_df = lil_df.drop_duplicates(subset=colonne_to_drop)
     last_index_lil = lil_df['original_index'].max()
     name_lil = lil_df["Name"].unique()
 
     agee_df = df_rilevante_sorted[(df_rilevante_sorted["CHECK"] != "VERO") & (df_rilevante_sorted["Brand"] == "Ordini AGEE")].copy()
+    agee_df = agee_df.drop_duplicates(subset=colonne_to_drop)
     last_index_agee = agee_df['original_index'].max()
     name_agee = agee_df["Name"].unique()
 
@@ -207,7 +213,9 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                 name_agee if len(name_agee) > 0 else np.array([])
                                 ])
 
-    pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] == "NON TROVATO")].copy()
+    pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] != "VERO")].copy()
+    # pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] == "NON TROVATO")].copy()
+    # pagamenti = pagamenti.drop_duplicates(subset=colonne)
     last_index_pag = pagamenti['original_index'].max()
     name_pagamenti = pagamenti["original_index"].unique()
 
@@ -226,10 +234,17 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                 name_df = lil_df[lil_df['Name'] == name]
                 check = name_df["CHECK"].values[0]
+                metodo = name_df["Payment Method"].values[0]
 
                 if check == "FALSO":
-                    st.write(f"Il totale non coincide con l'importo effettivamente incassato. Modificare i valori delle colonne opportune.")
-                    st.write(f"Importo effettivamente incassato: {name_df['Importo Pagato'].values[0]}")
+                    
+                    if "Qromo" in metodo or "Satispay" in metodo:
+                        st.write(f"Non è stato possibile determinare con certezza il pagamento corrispondente all'ordine {name}")
+                        # st.write(f"Scegliere tra i pagamenti dello stesso giorno senza corrispondenza quello o quelli da associare. Altrimenti mettere il Total dell'ordine pari a 0.")
+
+                    else:
+                        st.write(f"Il totale non coincide con l'importo effettivamente incassato. Modificare i valori delle colonne opportune.")
+                        st.write(f"Importo effettivamente incassato: {name_df['Importo Pagato'].values[0]}")
                 
                 elif check == "NON TROVATO":
                     st.write(f"Non è stato trovato un pagamento relativo all'ordine. Modificare i valori delle colonne opportune.")
@@ -260,6 +275,45 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                 if double_payment_method:
                     base_warning = f"Attenzione: Scegliere il metodo di pagamento effettivamente usato in Payment Method:"
                     st.warning(base_warning)
+
+
+                if "Qromo" in metodo or "Satispay" in metodo:
+                    # Step 1: Extract the first list from 'possibili_pagamenti' in df
+                    possibili_pagamenti = name_df['possibili_pagamenti'].iloc[0]
+
+                    # Step 2: Filter df_pagamenti based on matching 'Numero Pagamento' values
+                    filtered_rows = pagamenti[pagamenti['Numero Pagamento'].isin(possibili_pagamenti)]
+
+                    st.write("Selezionare i pagamenti corrispondenti all'ordine:")
+                    selected_rows = []
+                    for index, row in filtered_rows.iterrows():
+                        print(index, row)
+                        unique_key = f"{name}_{index}"
+                        if st.checkbox(f"{row['Importo Pagato']}€ pagati alle {row['Data']}", key=unique_key):
+                            selected_rows.append(row)
+
+                    # st.write(pd.DataFrame(filtered_rows[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]]))
+
+                    # Step 3: Display these rows and allow user to make a selection
+                    # st.write("Possible Payment Rows:")
+                    # selected_rows = st.multiselect(
+                    #     "Choose rows from df_pagamenti:", 
+                    #     filtered_rows["Metodo", "Data", "Numero Pagamento", "Importo Pagato"].index,  # Display the index of each row for selection
+                    #     #format_func=lambda x: f"Numero Pagamento: {filtered_rows.loc[x, 'Numero Pagamento']} - Amount: {filtered_rows.loc[x, 'Amount']} - Status: {filtered_rows.loc[x, 'Status']}"
+                    # )
+                    # # Step 4: Display the selected rows
+                    # st.write("Selected Rows:")
+                    # st.write(filtered_rows.loc[selected_rows] if selected_rows else "No rows selected")
+                    
+                    # Show selected rows
+                    if selected_rows:
+                        selected_df = pd.DataFrame(selected_rows)
+                        st.write("Hai selezionato:")
+                        st.write(selected_df[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]])
+                        st.write(f"Cambia il Total a: {selected_df['Importo Pagato'].iloc[0]}")
+                    else:
+                        st.write("Non hai selezionato alcun pagamento.")
+                        st.write("Cambia il Total a 0.")
 
                 # Dropdown to select which columns to edit (multi-select)
                 columns_to_edit = st.multiselect("Selezionare le colonne da modificare:", colonne, key=f"multiselect_{name}")

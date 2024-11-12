@@ -251,7 +251,7 @@ class OrderSummary:
             cell.font = bold_font
 
         exclude_strings = ["Luxury Pack", "Engraving", "E-gift", "Repair", "Whatever Tote", "Piercing Party", "LIL Bag"]
-        df_ordini_gioielli = self.df_ordini_all[~self.df_ordini_all['Lineitem name'].str.contains('|'.join(exclude_strings), case=False, na=False)]
+        df_ordini_gioielli = self.df_ordini_all[~self.df_ordini_all['Lineitem name'].str.contains('|'.join(exclude_strings), case=False, na=False)] #SKU!!!!!
     
         df_lil = df_ordini_gioielli[df_ordini_gioielli['Brand'] == 'LIL Milan']
         df_agee = df_ordini_gioielli[df_ordini_gioielli['Brand'] == 'AGEE']
