@@ -147,9 +147,6 @@ class QromoMatcher(PaymentMatcher):
         df_full = df_full.drop_duplicates(subset=columns)
         df_full["CHECK"] = df_full["CHECK"].fillna("NON TROVATO")
         df_full["Metodo"] = "Qromo"
-        print("QROMO URGENTE", df_full.CHECK.value_counts())
-        print(df_full[df_full["Importo Pagato"] == 794])
-        print(df_full[df_full["CHECK"] == "NON TROVATO"])
 
         return df_final_check, df_full, columns
 

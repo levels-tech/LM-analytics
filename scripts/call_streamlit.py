@@ -133,6 +133,18 @@ def add_row(df, diff, payment, nome, last_index):
     # Add the new row to the dataframe
     return pd.concat([df, pd.DataFrame([template_row])], ignore_index=True)
 
+def aggiungi_pagamenti(df, nuovi):
+    print("Entering aggiungi pagamenti")  # Debug print to indicate the function is called
+    
+    for value in nuovi.values():
+        df.loc[df["Numero Pagamento"] == value, "CHECK"] = "VERO"
+    
+    df.loc[df["CHECK"] == "FALSO", "CHECK"] = "NON TROVATO"
+
+    df.to_excel("pagamenti.xlsx")
+  
+    return df
+
 
 def update_df(df, new_value, nome, pagamenti = None):
     print("Entering update_df")  # Debug print to indicate the function is called

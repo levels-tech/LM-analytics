@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from scripts.call_streamlit import run, update_df, check_files, missing_fields, add_row
+from scripts.call_streamlit import run, update_df, check_files, missing_fields, add_row, aggiungi_pagamenti
 from scripts.summary_excel import OrderSummary
 from utils.exceptions import DateMismatchError
 
@@ -15,11 +15,14 @@ def generate_excel(df_ordini_all, pp, filename):
     return filename
 
 
-def check_all_updates_saved():
+def check_all_updates_saved(name_ordini, name_pagamenti = None, pag = False):
     payment_indices = set(name_pagamenti)
     order_names = set(name_ordini)
     
-    all_required_updates = payment_indices.union(order_names)
+    if pag == "yes":
+        all_required_updates = payment_indices.union(order_names)
+    else:
+        all_required_updates = order_names
     all_updates_completed = all_required_updates.issubset(st.session_state.saved_updates)
     
     if not all_updates_completed:
@@ -119,15 +122,15 @@ other_files["Scalapay"] = {
 }
 st.markdown("---")
 
-other_files["Shopify LIL"] = {
-    "file": st.file_uploader("Caricare file per Shopify LIL", type=["csv"], key="shopify_lil"),
-    "include": st.checkbox("File da includere", value=True, key="shopify_lil_include"),
-}
-st.markdown("---")
-
 other_files["Shopify AGEE"] = {
     "file": st.file_uploader("Caricare file per Shopify AGEE", type=["csv"], key="shopify_agee"),
     "include": st.checkbox("File da includere", value=True, key="shopify_agee_include"),
+}
+st.markdown("---")
+
+other_files["Shopify LIL"] = {
+    "file": st.file_uploader("Caricare file per Shopify LIL", type=["csv"], key="shopify_lil"),
+    "include": st.checkbox("File da includere", value=True, key="shopify_lil_include"),
 }
 st.markdown("---")
 
@@ -212,12 +215,10 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     name_ordini = np.concatenate([name_lil if len(name_lil) > 0 else np.array([]),
                                 name_agee if len(name_agee) > 0 else np.array([])
                                 ])
+    
+    pagamenti_da_aggiungere = {}
 
     pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] != "VERO")].copy()
-    # pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] == "NON TROVATO")].copy()
-    # pagamenti = pagamenti.drop_duplicates(subset=colonne)
-    last_index_pag = pagamenti['original_index'].max()
-    name_pagamenti = pagamenti["original_index"].unique()
 
     #LIL MILAN
     if len(lil_df) > 0:
@@ -279,32 +280,41 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                 if "Qromo" in metodo or "Satispay" in metodo:
                     # Step 1: Extract the first list from 'possibili_pagamenti' in df
+                    # Check if the first element is NaN, else assign its value directly
+                    # Get the first element of 'possibili_pagamenti' column
                     possibili_pagamenti = name_df['possibili_pagamenti'].iloc[0]
+
+                    # If possibili_pagamenti is NaN or empty, assign an empty list
+                    possibili_pagamenti = [] if possibili_pagamenti is None or (isinstance(possibili_pagamenti, float) and np.isnan(possibili_pagamenti)) else possibili_pagamenti
+
+                    # st.write(possibili_pagamenti)
+                    # possibili_pagamenti = possibili_pagamenti if pd.notna(possibili_pagamenti) else []
 
                     # Step 2: Filter df_pagamenti based on matching 'Numero Pagamento' values
                     filtered_rows = pagamenti[pagamenti['Numero Pagamento'].isin(possibili_pagamenti)]
 
-                    st.write("Selezionare i pagamenti corrispondenti all'ordine:")
+                    st.write("Selezionare uno o più pagamenti corrispondenti all'ordine:")
                     selected_rows = []
                     for index, row in filtered_rows.iterrows():
-                        print(index, row)
                         unique_key = f"{name}_{index}"
                         if st.checkbox(f"{row['Importo Pagato']}€ pagati alle {row['Data']}", key=unique_key):
                             selected_rows.append(row)
-
-                    # st.write(pd.DataFrame(filtered_rows[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]]))
-
-                    # Step 3: Display these rows and allow user to make a selection
-                    # st.write("Possible Payment Rows:")
-                    # selected_rows = st.multiselect(
-                    #     "Choose rows from df_pagamenti:", 
-                    #     filtered_rows["Metodo", "Data", "Numero Pagamento", "Importo Pagato"].index,  # Display the index of each row for selection
-                    #     #format_func=lambda x: f"Numero Pagamento: {filtered_rows.loc[x, 'Numero Pagamento']} - Amount: {filtered_rows.loc[x, 'Amount']} - Status: {filtered_rows.loc[x, 'Status']}"
-                    # )
-                    # # Step 4: Display the selected rows
-                    # st.write("Selected Rows:")
-                    # st.write(filtered_rows.loc[selected_rows] if selected_rows else "No rows selected")
                     
+                            # Get the key associated with row["Numero Pagamento"], if it exists
+                            matching_key = None
+                            for key, value in pagamenti_da_aggiungere.items():
+                                if value == row["Numero Pagamento"]:
+                                    matching_key = key
+                                    break
+                                
+                            # if row in selected_rows:
+                                # If a match is found, display a warning with the matching key
+                            if matching_key:
+                                st.warning(f"Il pagamento scelto è già stato assegnato all'ordine {matching_key}")
+                            else:
+                                pagamenti_da_aggiungere[name] = row["Numero Pagamento"]
+                                importo_pagato = row['Importo Pagato']
+
                     # Show selected rows
                     if selected_rows:
                         selected_df = pd.DataFrame(selected_rows)
@@ -314,6 +324,11 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     else:
                         st.write("Non hai selezionato alcun pagamento.")
                         st.write("Cambia il Total a 0.")
+                        importo_pagato = 0
+                        selected_rows.append(0)
+
+                else:
+                    selected_rows = []
 
                 # Dropdown to select which columns to edit (multi-select)
                 columns_to_edit = st.multiselect("Selezionare le colonne da modificare:", colonne, key=f"multiselect_{name}")
@@ -407,7 +422,8 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                 if new_value.strip():  # Only check if a value was entered
                                     try:
                                         new_total = float(new_value)
-                                        importo_pagato = float(name_df["Importo Pagato"].values[0])
+                                        if len(selected_rows) == 0:
+                                            importo_pagato = float(name_df["Importo Pagato"].values[0])
                                         # if new_total != importo_pagato:
                                         #     st.warning("Il totale inserito non corrisponde all'importo effettivamente pagato. Salvare comunque le modifiche?")
                                             # confirm_save = st.button("Salvare le modifiche", key=f"confirm_total_{name}")
@@ -469,7 +485,8 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                         if "Total" in columns_to_edit and new_value.strip():
                             # new_total = float(new_value)
                             new_total = float(new_values[list(new_values.keys())[0]]['values']['Total'])
-                            importo_pagato = float(name_df["Importo Pagato"].values[0])
+                            if len(selected_rows) == 0:
+                                importo_pagato = float(name_df["Importo Pagato"].values[0])
                             st.write(new_total, importo_pagato)
                             
                             if new_total != importo_pagato:
@@ -506,8 +523,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                                     'difference': difference,
                                                     'payment_method': new_payment_method
                                                 }
-
-                                            
 
                                 else:
                                     new_result, _ = update_df(st.session_state.processed_data, new_values, name)
@@ -572,18 +587,29 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     else:
         st.subheader("Nessun ordine di LIL Milan deve essere controllato")
 
-            
+
+    # order_changes_complete = check_all_updates_saved(name_ordini, pag = False)
+    # #Excel generation part
+    # if order_changes_complete:
+    pagamenti = aggiungi_pagamenti(st.session_state.pagamenti, pagamenti_da_aggiungere)
+        
+    p =  pagamenti[(pagamenti["CHECK"] == "NON TROVATO")].copy()
+    # pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] == "NON TROVATO")].copy()
+    # pagamenti = pagamenti.drop_duplicates(subset=colonne)
+    last_index_pag = p['original_index'].max()
+    name_pagamenti = p["original_index"].unique()
+
                
     #PAGAMENTI
-    if len(pagamenti) > 0: 
+    if len(p) > 0: 
         
         st.write("")
         st.subheader("Pagamenti da controllare")
             
-        names_check = len(pagamenti)
+        names_check = len(p)
         st.write(f"{names_check} pagamenti su {names_count_pagamenti}")
         
-        for _, row in pagamenti.iterrows():
+        for _, row in p.iterrows():
                
             idx = row["original_index"]
             check = row["CHECK"]

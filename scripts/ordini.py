@@ -79,12 +79,12 @@ class Ordini:
         self.df['Location'] = self.df['Location'].str.replace(r'(?i)\blil house london\b', 'LIL House London', regex=True)
 
         #LIL Milan
-        self.df.loc[(self.df['Brand'] == "LIL Milan") & 
+        self.df.loc[(self.df['Brand'] == "Ordini LIL") & 
                     (self.df['Location'].isna()) & 
                     (self.df['Shipping Method'] == "Standard"), "Location"] = "LIL House London"
         
         #AGEE
-        self.df.loc[(self.df['Brand'] == "AGEE") & 
+        self.df.loc[(self.df['Brand'] == "Ordini AGEE") & 
                     (self.df['Location'].isna()) & 
                     (self.df['Shipping Method'] == "Standard"), "Location"] = "Firgun House"
         
@@ -101,12 +101,12 @@ class Ordini:
     def handle_shipping_country(self):   
 
         #"LIL Milan"
-        self.df.loc[((self.df["Brand"] == "LIL Milan") & 
+        self.df.loc[((self.df["Brand"] == "Ordini LIL") & 
                     ((self.df["Shipping Method"] == "Firgun House") | (self.df["Shipping Method"].isna()))) & 
                     (self.df["Shipping Country"].isna()), "Shipping Country"] = "IT"
         
         #"AGEE"
-        self.df.loc[((self.df["Brand"] == "AGEE") & 
+        self.df.loc[((self.df["Brand"] == "Ordini AGEE") & 
                     (self.df["Shipping Method"] == "Standard") | (self.df["Shipping Method"].isna())) & 
                     (self.df["Shipping Country"].isna()), "Shipping Country"] = "IT"
 
