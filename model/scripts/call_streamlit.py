@@ -1,6 +1,6 @@
 #FILE CON FUNZIONI CHIAMATE DIRETTAMENTE DA STREAMLIT
 
-
+import streamlit as st
 import pandas as pd
 
 from model.scripts.ordini import Ordini
@@ -13,7 +13,6 @@ from model.matchers.matcher_satispay import SatispayMatcher
 from model.matchers.matcher_scalapay import ScalapayMatcher
 from model.matchers.matcher_shopify import ShopifyMatcher
 
-from model.utils.columns_state import ColumnsState
 from model.utils.exceptions import DateMismatchError
 from model.utils.functions import reformat_date, find_header_row
 
@@ -53,10 +52,10 @@ def run(file_o, file_p, mese, anno):
     #ordini
     print("ordini iniziati")
     ordini_processor = Ordini(file_o, mese=mese, anno=anno)
-    ordini = ordini_processor.preprocess() 
+    ordini, df_columns = ordini_processor.preprocess() 
     print("ordini finiti")
 
-    # ColumnsState.get_instance().set_df_columns(df_columns)
+    st.session_state.df_columns = df_columns
 
     try:
         #run matchers
@@ -81,8 +80,8 @@ def run(file_o, file_p, mese, anno):
         print("Runner created")
         
         result, pagamenti, pagamenti_columns = runner.run_all_matchers(mese, anno)
-        ColumnsState.get_instance().set_pagamenti_columns(pagamenti_columns)
-        
+        st.session_state.pagamenti_columns = pagamenti_columns
+
         return result, pagamenti
     
     except Exception as e:
@@ -138,17 +137,19 @@ def add_row(df, diff, payment, nome, last_index):
 def aggiungi_pagamenti(df, nuovi):
     print("Entering aggiungi pagamenti")  # Debug print to indicate the function is called
     
-    for value in nuovi.values():
-        df.loc[df["Numero Pagamento"] == value, "CHECK"] = "VERO"
+    for numero in nuovi.keys():
+        df.loc[df["Numero Pagamento"] == numero, "CHECK"] = "VERO"
+
+    df = df.drop_duplicates(subset = ["Numero Pagamento"])
     
     df.loc[(df["CHECK"] == "FALSO"), "CHECK"] = "NON TROVATO"
 
-    df.to_excel("pagamenti.xlsx")
+    # df.to_excel("pagamenti.xlsx")
   
     return df
 
 
-def update_df(df, new_value, nome, pagamenti = None, dopo = False):
+def update_df(df, new_value, nome, pagamenti = None):
     print("Entering update_df")  # Debug print to indicate the function is called
     
     colonne_solo_idx = ["Total", 'Lineitem quantity', 'Lineitem name', 'Lineitem price', 'Lineitem compare at price',]   
@@ -162,6 +163,9 @@ def update_df(df, new_value, nome, pagamenti = None, dopo = False):
         # Get the minimum index
         first_index = min(row_indices)
         
+        name_mask = df["Name"] == nome
+        # df.loc[name_mask, "CHECK"] = "VERO"  # Update at the specific row index
+
         # For each row index and its data
         for row_idx, row_data in new_value.items():
             # Update each column's value
@@ -171,9 +175,9 @@ def update_df(df, new_value, nome, pagamenti = None, dopo = False):
                     df.loc[row_idx, column] = value  # Update at the specific row index
                     print(f"Updated index {row_idx}: {df.loc[row_idx]}")
                 else:
-                    name_mask = df["Name"] == nome
                     df.loc[name_mask, column] = value
                     print(f"Updated {column}: {value}")
+                
         
         # Check Payment Method for Gift Card + after all updates
         original_method = df.loc[first_index, "Payment Method"]
@@ -186,79 +190,45 @@ def update_df(df, new_value, nome, pagamenti = None, dopo = False):
                 print(f"Updated Payment Method: {cleaned_method}")
 
     else:
-        #se new_value è solo None: va cancellato
-        if all(x is None for x in new_value):
+
+        if new_value is None or (isinstance(new_value, list) and all(x is None for x in new_value)):
             print(f"Dropping row at index {nome}")
             pagamenti.drop(nome, inplace=True)
-
+        
         else:
 
-            if dopo == False: #non esisteva già lo stesso ordine
-                # Create multiple rows, one for each SKU/quantity pair
-                new_rows = []
+            new_rows = []
 
-                name = new_value[0]
-                data = new_value[1]
-                totale = new_value[2]
-                skus = new_value[3]
-                quantities = new_value[4]
-                country = new_value[5]
-                metodo = new_value[6]
-                location = new_value[7]
-                brand = new_value[8]
-                
-                for i in range(len(skus)):
-                    new_row = {
-                        "Name": "#" + str(name),
-                        "Paid at": str(data),
-                        "Total": float(totale) if i == 0 else float('nan'), 
-                        "Lineitem quantity": str(quantities[i]),
-                        "Lineitem sku": str(skus[i]),
-                        "Shipping Country": str(country).strip(),
-                        "Location": str(location),
-                        "Payment Method": str(metodo),
-                        "Brand": "Ordini "+str(brand),
-                        "CHECK": "VERO",
-                    }
-                    
-                    new_rows.append(new_row)
-                    
-                    
-                df = pd.concat([df, pd.DataFrame([new_rows])], ignore_index=True)
-                pagamenti.loc[nome, "Brand"] = "Ordini "+str(brand)
-                print("New row added:", new_rows)
+            name = new_value[0]
+            data = new_value[1]
+            totale = new_value[2]
+            skus = new_value[3]
+            quantities = new_value[4]
+            country = new_value[5]
+            metodo = new_value[6]
+            location = new_value[7]
+            brand = new_value[8]
 
-            else: #esisteva già lo stesso ordine
+            if name in df["Name"].unique(): #esiste già lo stesso ordine
 
-                new_rows = []
+                rows_esistenti = df[df["Name"] == name] #["Numero Pagamento"] 
+                # rows_esistenti = pagamenti[pagamenti["Numero Pagamento"].isin(numeri_rows_esistenti)]
+                print(rows_esistenti.columns)
 
-                name = new_value[0]
-                data = new_value[1]
-                totale = new_value[2]
-                skus = new_value[3]
-                quantities = new_value[4]
-                country = new_value[5]
-                metodo = new_value[6]
-                location = new_value[7]
-                brand = new_value[8]
-
-
-                rows_esistenti = pagamenti[name]
-
-                data_pagamenti = rows_esistenti["Paid at"].values[0]
+                # data_pagamenti = rows_esistenti["Paid at"].values[0]
                 totale_pagamenti = rows_esistenti["Total"].values[0]
                 skus_pagamenti = rows_esistenti["Lineitem sku"].tolist()
                 quantities_pagamenti = rows_esistenti["Lineitem quantity"].tolist()
-                country_pagamenti = rows_esistenti["Shipping Country"].values[0]
+                # country_pagamenti = rows_esistenti["Shipping Country"].values[0]
                 metodo_pagamenti = rows_esistenti["Payment Method"].values[0]
-                location_pagamenti = rows_esistenti["Location"].values[0]
+                # location_pagamenti = rows_esistenti["Location"].values[0]
                 brand_pagamenti = rows_esistenti["Brand"].values[0]
 
-                new_rows = []
-
                 if metodo == metodo_pagamenti:  
-                    # Update total in existing rows
-                    rows_esistenti.iloc[0, rows_esistenti.columns.get_loc("Total")] = float(totale_pagamenti) + float(totale)
+
+                   # Get the indices of existing rows
+                    existing_indices = df[df["Name"] == name].index
+                    df.loc[existing_indices[0], "Total"] = float(totale_pagamenti) + float(totale)
 
                     # Handle matching SKUs
                     matched_skus = set()
@@ -269,14 +239,14 @@ def update_df(df, new_value, nome, pagamenti = None, dopo = False):
                             matched_skus.add(sku)
                             for pos in matching_positions:
                                 if float(quantities_pagamenti[pos]) == 0:
-                                    rows_esistenti.iloc[pos, rows_esistenti.columns.get_loc("Lineitem quantity")] = str(quantities[i])
+                                    df.loc[existing_indices[pos], "Lineitem quantity"] = str(quantities[i])
                                     break
 
                     # Add new rows for unmatched SKUs
                     for i, sku in enumerate(skus):
                         if sku not in matched_skus:
                             new_row = {
-                                "Name": "#" + str(name),
+                                "Name": str(name),
                                 "Paid at": str(data),
                                 "Total": float('nan'),
                                 "Lineitem quantity": str(quantities[i]),
@@ -288,6 +258,10 @@ def update_df(df, new_value, nome, pagamenti = None, dopo = False):
                                 "CHECK": "VERO",
                             }
                             new_rows.append(new_row)
+                        
+                        if new_rows:
+                            df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) 
+                            pagamenti.loc[nome, "Brand"] = "Ordini "+str(brand)
 
                 else:
                     # Different payment method - create new rows based on SKU matching
@@ -301,7 +275,7 @@ def update_df(df, new_value, nome, pagamenti = None, dopo = False):
                                 new_quantity = "0" if float(quantities_pagamenti[pos]) != 0 else str(quantities[i])
                                 
                                 new_row = {
-                                    "Name": "#" + str(name),
+                                    "Name": str(name),
                                     "Paid at": str(data),
                                     "Total": float(totale) if first_row else float('nan'),
                                     "Lineitem quantity": new_quantity,
@@ -315,251 +289,34 @@ def update_df(df, new_value, nome, pagamenti = None, dopo = False):
                                 new_rows.append(new_row)
                                 first_row = False
                                 break
-  
-                df = pd.concat([df, pd.DataFrame([new_rows])], ignore_index=True)
+                    
+                    if new_rows:
+                        df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) 
+                        pagamenti.loc[nome, "Brand"] = "Ordini "+str(brand)
+
+            else: #non esiste già lo stesso ordine
+                st.write(len(skus))
+                for i in range(len(skus)):
+                    new_row = {
+                        "Name": str(name),
+                        "Paid at": str(data),
+                        "Total": float(totale) if i == 0 else float('nan'), 
+                        "Lineitem quantity": str(quantities[i]),
+                        "Lineitem sku": str(skus[i]),
+                        "Shipping Country": str(country).strip(),
+                        "Location": str(location),
+                        "Payment Method": str(metodo),
+                        "Brand": "Ordini "+str(brand),
+                        "CHECK": "VERO",
+                    }
+                    new_rows.append(new_row)
+                
+                # st.write(pd.DataFrame(new_rows))
+                    
+                df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) 
+                # st.write(pd.DataFrame(df[df["Name"] == name]))
                 pagamenti.loc[nome, "Brand"] = "Ordini "+str(brand)
-                print("New row added:", new_rows)
+                print("New row added:", new_rows)          
 
     return df, pagamenti
     
-    
-    
-        
-#             valid_indices = [i for i in index if pd.notna(df.loc[i, "Total"])]
-
-#             if valid_indices:  # Check if there are any valid indices
-#                 first_valid_index = valid_indices[0]  # Get the first valid index
-#                 df.loc[first_valid_index, "Total"] = new_value  # Update Total at that index
-#                 print(f"Updated index {first_valid_index}: {df.loc[first_valid_index]}")
-
-#                 # Clean and set the Payment Method for all rows in 'index'
-#                 if nota == "Gift Card":
-#                     original_method = df.loc[first_valid_index, "Payment Method"]
-#                     cleaned_method = original_method.replace("Gift Card", "").replace("+", "").strip()
-#                     df.loc[index, "Payment Method"] = cleaned_method
-#                     print(f"Updated Payment Method for indices {index}: {cleaned_method}")
-#             else:
-#                 print("No valid index found where 'Total' is not NaN.")
-
-#     elif nota == "Reso dubbio":
-#         print("Processing Reso dubbio")
-
-#         # Check if index and new_value have the same length
-#         if len(index) != len(new_value):
-#             raise ValueError("Index list and new value list must have the same length.")
-
-#         # Update the DataFrame with the new quantities based on the provided indexes
-#         gioielli_total = 0
-#         for idx, new_quantity in zip(index, new_value):
-#             initial_quantity = df.loc[idx, 'Lineitem quantity']
-#             initial_price = df.loc[idx, 'Lineitem price']
-
-#             if initial_price > 10:
-#                 gioielli_total += initial_price * initial_quantity
-#                 print(gioielli_total)
-
-#             df.loc[idx, 'Lineitem quantity'] = new_quantity
-#             print(f"Updated Lineitem quantity at index {idx} to {new_quantity}")  # Debug print
-
-#         # Calculate the total
-#         new_total = 0
-#         new_gioielli_total = 0
-
-#         # Ensure there are indices to avoid IndexError
-#         if index:  # Check if index is not empty
-#             # Filter the indices where Total is not NaN
-#             valid_indices = [i for i in index if pd.notna(df.loc[i, "Total"])]
-        
-#             if valid_indices:  # Check if there are any valid indices
-#                 first_row = min(valid_indices)  # Get the first valid index
-
-#                 # Sum total for all line items with the same "Name"
-#                 for idx in index:
-#                     print(idx)
-#                     row = df.iloc[idx]
-#                     print(row['Lineitem quantity'], row['Lineitem price'])
-#                     new_total += row['Lineitem quantity'] * row['Lineitem price']
-#                     print(new_total)
-
-#                     if  row['Lineitem price'] > 10:
-#                         new_gioielli_total +=  row['Lineitem price'] * row['Lineitem quantity']
-#                         print(new_gioielli_total)
-
-#                 # Adding Shipping and subtracting Discount from the first row
-#                 shipping = df.loc[first_row, 'Shipping'] if pd.notna(df.loc[first_row, 'Shipping']) else 0
-#                 discount = df.loc[first_row, 'Discount Amount'] if pd.notna(df.loc[first_row, 'Discount Amount']) else 0
-#                 discount_rate =  discount / gioielli_total
-                                
-#                 new_total = new_total - (new_gioielli_total * discount_rate) + shipping
-#                 print(discount_rate, new_total)
-
-#                 # Compare the new total with "Importo Pagato"
-#                 importo_pagato = df.loc[first_row, 'Importo Pagato'] if pd.notna(df.loc[first_row, 'Importo Pagato']) else 0
-                
-#                 if new_total != importo_pagato:                
-#                     raise ValueError(f"Controllare le quantità, l'importo pagato {importo_pagato} non corrisponde con il totale calcolato {new_total}")
-#                 else:
-#                     df.loc[first_row, 'Total'] = new_total
-#                     df.loc[index, 'Discount Amount'] = (new_gioielli_total * discount_rate)
-
-
-#     elif nota == "Pagamento non trovato":
-#         print("Processing Pagamento non trovato")
-
-#         if index:  # Check if index is not empty
-#             # Filter the indices where Total is not NaN
-#             valid_indices = [i for i in index if pd.notna(df.loc[i, "Total"])]
-
-#             if valid_indices:  # Check if there are any valid indices
-#                 first_valid_index = valid_indices[0]  # Get the first valid index
-#                 df.loc[first_valid_index, "Total"] = new_value  # Update Total at that index
-#                 print(f"Updated index {first_valid_index}: {df.loc[first_valid_index]}")
-
-#             else:
-#                 print("No valid index found where 'Total' is not NaN.")
-#     # Always return both DataFrames
-#     return df, pagamenti
-
-
-
-
-
-
-
-
-
-
-
-
-# def update_df(df, index, new_value, nota, pagamenti = None):
-#     print("Entering update_df")  # Debug print to indicate the function is called
-    
-#     if pagamenti is not None:
-        
-#         if new_value[0] is not None:
-#             brand = "LIL Milan" if int(new_value[0]) > 30000 else "AGEE"
-#             new_row = {
-#                 "Name": "#" + str(new_value[0]),
-#                 "Total": pagamenti.loc[index, "Importo Pagato"],
-#                 "Paid at": pagamenti.loc[index, "Data"],
-#                 "Shipping Country": new_value[2].strip(),
-#                 "Location": str(new_value[1]),
-#                 "Payment Method": pagamenti.loc[index, "Metodo"],
-#                 "Brand": brand,
-#                 "CHECK": "VERO"
-#             }
-#             df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-#             pagamenti.loc[index, "Brand"] = brand
-#             print("New row added:", new_row)
-        
-#         else:
-#             print(f"Dropping row at index {index}")
-#             pagamenti.drop(index, inplace=True)
-            
-#     # Handle df updates based on nota
-#     if nota == "Gift Card" or nota == "Gift Card only":
-#         print("Processing Gift Card or Gift Card only")
-#         if index:  # Check if index is not empty
-#             # Filter the indices where Total is not NaN
-#             valid_indices = [i for i in index if pd.notna(df.loc[i, "Total"])]
-
-#             if valid_indices:  # Check if there are any valid indices
-#                 first_valid_index = valid_indices[0]  # Get the first valid index
-#                 df.loc[first_valid_index, "Total"] = new_value  # Update Total at that index
-#                 print(f"Updated index {first_valid_index}: {df.loc[first_valid_index]}")
-
-#                 # Clean and set the Payment Method for all rows in 'index'
-#                 if nota == "Gift Card":
-#                     original_method = df.loc[first_valid_index, "Payment Method"]
-#                     cleaned_method = original_method.replace("Gift Card", "").replace("+", "").strip()
-#                     df.loc[index, "Payment Method"] = cleaned_method
-#                     print(f"Updated Payment Method for indices {index}: {cleaned_method}")
-#             else:
-#                 print("No valid index found where 'Total' is not NaN.")
-
-#     elif nota == "Reso dubbio":
-#         print("Processing Reso dubbio")
-
-#         # Check if index and new_value have the same length
-#         if len(index) != len(new_value):
-#             raise ValueError("Index list and new value list must have the same length.")
-
-#         # Update the DataFrame with the new quantities based on the provided indexes
-#         gioielli_total = 0
-#         for idx, new_quantity in zip(index, new_value):
-#             initial_quantity = df.loc[idx, 'Lineitem quantity']
-#             initial_price = df.loc[idx, 'Lineitem price']
-
-#             if initial_price > 10:
-#                 gioielli_total += initial_price * initial_quantity
-#                 print(gioielli_total)
-
-#             df.loc[idx, 'Lineitem quantity'] = new_quantity
-#             print(f"Updated Lineitem quantity at index {idx} to {new_quantity}")  # Debug print
-
-#         # Calculate the total
-#         new_total = 0
-#         new_gioielli_total = 0
-
-#         # Ensure there are indices to avoid IndexError
-#         if index:  # Check if index is not empty
-#             # Filter the indices where Total is not NaN
-#             valid_indices = [i for i in index if pd.notna(df.loc[i, "Total"])]
-        
-#             if valid_indices:  # Check if there are any valid indices
-#                 first_row = min(valid_indices)  # Get the first valid index
-
-#                 # Sum total for all line items with the same "Name"
-#                 for idx in index:
-#                     print(idx)
-#                     row = df.iloc[idx]
-#                     print(row['Lineitem quantity'], row['Lineitem price'])
-#                     new_total += row['Lineitem quantity'] * row['Lineitem price']
-#                     print(new_total)
-
-#                     if  row['Lineitem price'] > 10:
-#                         new_gioielli_total +=  row['Lineitem price'] * row['Lineitem quantity']
-#                         print(new_gioielli_total)
-
-#                 # Adding Shipping and subtracting Discount from the first row
-#                 shipping = df.loc[first_row, 'Shipping'] if pd.notna(df.loc[first_row, 'Shipping']) else 0
-#                 discount = df.loc[first_row, 'Discount Amount'] if pd.notna(df.loc[first_row, 'Discount Amount']) else 0
-#                 discount_rate =  discount / gioielli_total
-                                
-#                 new_total = new_total - (new_gioielli_total * discount_rate) + shipping
-#                 print(discount_rate, new_total)
-
-#                 # Compare the new total with "Importo Pagato"
-#                 importo_pagato = df.loc[first_row, 'Importo Pagato'] if pd.notna(df.loc[first_row, 'Importo Pagato']) else 0
-                
-#                 if new_total != importo_pagato:                
-#                     raise ValueError(f"Controllare le quantità, l'importo pagato {importo_pagato} non corrisponde con il totale calcolato {new_total}")
-#                 else:
-#                     df.loc[first_row, 'Total'] = new_total
-#                     df.loc[index, 'Discount Amount'] = (new_gioielli_total * discount_rate)
-
-
-#     elif nota == "Pagamento non trovato":
-#         print("Processing Pagamento non trovato")
-
-#         if index:  # Check if index is not empty
-#             # Filter the indices where Total is not NaN
-#             valid_indices = [i for i in index if pd.notna(df.loc[i, "Total"])]
-
-#             if valid_indices:  # Check if there are any valid indices
-#                 first_valid_index = valid_indices[0]  # Get the first valid index
-#                 df.loc[first_valid_index, "Total"] = new_value  # Update Total at that index
-#                 print(f"Updated index {first_valid_index}: {df.loc[first_valid_index]}")
-
-#             else:
-#                 print("No valid index found where 'Total' is not NaN.")
-#     # Always return both DataFrames
-#     return df, pagamenti
-
-
-
-
-
-
-
-

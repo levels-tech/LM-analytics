@@ -10,12 +10,10 @@ class PaypalMatcher(PaymentMatcher):
 
     def match(self, mese, anno):
 
-        df_full = self.handle_load_data("Paypal", mese, anno)
+        df_full, columns = self.handle_load_data("Paypal", mese, anno)
         
         if len(df_full) == 0:
             raise SkipMatcherException("Non ci sono pagamenti con Paypal")
-        
-        columns = df_full.columns
         
         df_full['Lordo'] = df_full['Lordo'].str.replace('.', '', regex=False)  # Remove periods (thousands separator)
         df_full['Lordo'] = df_full['Lordo'].str.replace(',', '.', regex=False)  # Replace commas with periods (decimal separator)

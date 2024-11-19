@@ -46,6 +46,12 @@ class Ordini:
 
         self.df = pd.concat([lil, agee], ignore_index=True) if len(lil) > 0 or len(agee) > 0 else pd.DataFrame()
 
+        self.colonne = self.df.columns
+
+        # escludere = ["#42196", "#42244", "#42439", "#42471", "#42518", "#42675", "#42676", "#42691", "#42726", "#42745", "#42833", "#42927", "#43014", "#43017", ]
+
+        # self.df = self.df[~self.df['Name'].isin(escludere)]
+
     #gestire i nomi dei pagamenti
     def handle_payment_method(self):
 
@@ -290,4 +296,4 @@ class Ordini:
         self.handle_nan()#7
 
 
-        return self.df
+        return self.df, self.colonne

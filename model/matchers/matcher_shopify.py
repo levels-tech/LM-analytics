@@ -8,12 +8,11 @@ class ShopifyMatcher(PaymentMatcher):
 
     def match(self, mese, anno):  
 
-        lil = self.handle_load_data("Shopify LIL", mese, anno)
-        agee =  self.handle_load_data("Shopify AGEE", mese, anno)
+        lil, columns = self.handle_load_data("Shopify LIL", mese, anno)
+        agee, _ =  self.handle_load_data("Shopify AGEE", mese, anno)
 
         # Concatenate dataframes if both are available
         df_full = pd.concat([lil, agee], ignore_index=True) if len(lil) > 0 or len(agee) > 0 else pd.DataFrame()
-        columns = df_full.columns
         
         if len(df_full) == 0:
             raise SkipMatcherException("Non ci sono pagamenti con Shopify")

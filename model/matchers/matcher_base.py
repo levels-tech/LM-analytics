@@ -37,6 +37,8 @@ class PaymentMatcher:
             else:
                 csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))
                 f = pd.read_csv(csv_file, dtype={date_column[name]: "string"})
+
+            columns = f.columns
             
             f["Giorno"] = f[date_column[name]].apply(reformat_date)
             f_filtered = f[(f["Giorno"].str[:7] == expected_date) | (f["Giorno"].isna())].copy()
@@ -44,7 +46,7 @@ class PaymentMatcher:
         else:
             f_filtered = pd.DataFrame()
            
-        return f_filtered
+        return f_filtered, columns
     
 
     #fare check per vero/falso/non trovato

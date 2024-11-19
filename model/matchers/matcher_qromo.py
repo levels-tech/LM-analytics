@@ -10,12 +10,10 @@ class QromoMatcher(PaymentMatcher):
 
     def match(self, mese, anno):
 
-        df_full = self.handle_load_data("Qromo", mese, anno)
+        df_full, columns = self.handle_load_data("Qromo", mese, anno)
         
         if len(df_full) == 0:
             raise SkipMatcherException("Non ci sono pagamenti con Qromo")
-        
-        columns = df_full.columns
 
         df_full = df_full[df_full["Stato"] != "Annullato"]
 

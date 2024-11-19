@@ -8,12 +8,10 @@ class SatispayMatcher(PaymentMatcher):
 
     def match(self, mese, anno):
 
-        df_full = self.handle_load_data("Satispay", mese, anno)
+        df_full, columns = self.handle_load_data("Satispay", mese, anno)
         
         if len(df_full) == 0:
             raise SkipMatcherException("Non ci sono pagamenti con Satispay")
-        
-        columns = df_full.columns
 
         df = df_full[['payment_uid', 'payment_date', 'total_amount', 'description']]
         df['partial_date'] = pd.to_datetime(df['payment_date']).dt.tz_localize(None).dt.date

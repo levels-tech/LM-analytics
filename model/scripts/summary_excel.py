@@ -1,11 +1,9 @@
 #CLASSE PER GENERARE L'EXCEL:
 
 import pandas as pd
+import streamlit as st
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment
-
-from model.utils.columns_state import ColumnsState
-
 
 
 class OrderSummary:
@@ -14,7 +12,6 @@ class OrderSummary:
         self.pagamenti = pagamenti
         self.filename = filename
 
-    #PROVAAAAAAAA
     def process_group(self, group):
         # Check if all non-NaN 'Total' values in the group are the same
         unique_totals = group['Total'].dropna().unique()
@@ -46,9 +43,9 @@ class OrderSummary:
             wb = Workbook()
             wb.save(self.filename)
 
-            columns_state = ColumnsState.get_instance()
-            df_columns = columns_state.df_columns
-            pagamenti_columns = columns_state.pagamenti_columns
+            # columns_state = ColumnsState.get_instance()
+            df_columns = st.session_state.df_columns
+            pagamenti_columns = st.session_state.pagamenti_columns
 
             # Apply the function to each 'Name' group
             self.df_ordini_all = self.df_ordini_all.groupby('Name', group_keys=False).apply(self.process_group)
@@ -62,7 +59,9 @@ class OrderSummary:
                 if mask_lil_o.any():
                     lil = self.df_ordini_all[mask_lil_o].copy()
                     paid_at_index = lil.columns.get_loc("Paid at")
-                    lil.insert(paid_at_index + 1, "Giorno", lil["Paid at"].apply(self.reformat_date))
+                    lil.insert(paid_at_index + 1, "Data Giorno", lil["Paid at"].apply(self.reformat_date))
+                    # lil = lil[lil.columns[: lil.columns.get_loc('Brand') + 1]]
+                    lil = lil[df_columns]
 
                     # Write to Excel
                     lil.to_excel(writer, sheet_name='Ordini LIL', index=False)
@@ -71,8 +70,9 @@ class OrderSummary:
                     agee = self.df_ordini_all[mask_agee_o]
                 
                     paid_at_index = agee.columns.get_loc("Paid at")
-                    agee.insert(paid_at_index + 1, "Giorno", agee["Paid at"].apply(self.reformat_date))
-                    # agee = agee[df_columns]
+                    agee.insert(paid_at_index + 1, "Data Giorno", agee["Paid at"].apply(self.reformat_date))
+                    # agee = agee[agee.columns[: agee.columns.get_loc('Brand') + 1]]
+                    agee = agee[df_columns]
 
                     # Write to Excel
                     agee.to_excel(writer, sheet_name='Ordini AGEE', index=False)
@@ -86,28 +86,29 @@ class OrderSummary:
                         payment_name_lil = p.split()[0] + "_LIL"
                         filtered_df_lil = self.pagamenti[mask_lil_p & (self.pagamenti["Metodo"] == p)]
 
-                        # if not filtered_df_lil.empty:
-                        #     matching_columns = next((cols for key, cols in pagamenti_columns.items() 
-                        #                              if key == p), None)
+                        if not filtered_df_lil.empty:
+                            matching_columns = next((cols for key, cols in pagamenti_columns.items() 
+                                                     if key == p), None)
                 
-                        #     # Filter columns if match found
-                        #     if len(matching_columns) > 0:
-                        #         filtered_df_lil = filtered_df_lil[matching_columns]
-                        filtered_df_lil.to_excel(writer, sheet_name=payment_name_lil, index=False)
+                            # Filter columns if match found
+                            if len(matching_columns) > 0:
+                                filtered_df_lil = filtered_df_lil[matching_columns]
+                            
+                            filtered_df_lil.to_excel(writer, sheet_name=payment_name_lil, index=False)
 
                 if mask_agee_p.any():
                     for p in self.pagamenti["Metodo"].unique():
                         payment_name_agee = p.split()[0] + "_AGEE"
                         filtered_df_agee = self.pagamenti[mask_agee_p & (self.pagamenti["Metodo"] == p)]
                         
-                        # if not filtered_df_agee.empty:
-                        #     matching_columns = next((cols for key, cols in pagamenti_columns.items() 
-                        #                         if key == p), None)
+                        if not filtered_df_agee.empty:
+                            matching_columns = next((cols for key, cols in pagamenti_columns.items() 
+                                                if key == p), None)
 
-                        #     # Filter columns if match found
-                        #     if len(matching_columns) > 0:
-                        #         filtered_df_agee = filtered_df_agee[matching_columns]
-                        filtered_df_agee.to_excel(writer, sheet_name=payment_name_agee, index=False)
+                            # Filter columns if match found
+                            if len(matching_columns) > 0:
+                                filtered_df_agee = filtered_df_agee[matching_columns]
+                            filtered_df_agee.to_excel(writer, sheet_name=payment_name_agee, index=False)
 
             # Now create the summary tables after all required sheets exist
             self.create_summary_table()  # This creates 'Totale' sheet
@@ -327,7 +328,7 @@ class OrderSummary:
                                            & (self.df_ordini_all["Location"].isin(["Firgun House", "LIL House", "LIL House London"]))]
 
         paid_at_index = ordini_lil_df.columns.get_loc("Paid at")
-        ordini_lil_df.insert(paid_at_index + 1, "Giorno", ordini_lil_df["Paid at"].apply(self.reformat_date))
+        ordini_lil_df.insert(paid_at_index + 1, "Data Giorno", ordini_lil_df["Paid at"].apply(self.reformat_date))
 
         unique_countries = ordini_lil_df['Shipping Country'].unique()
 
@@ -347,7 +348,7 @@ class OrderSummary:
             daily_sheet[cell_position].font = bold_font
 
         # Get unique dates from the "Giorno" column
-        unique_dates = ordini_lil_df['Giorno'].dropna().unique()
+        unique_dates = ordini_lil_df['Data Giorno'].dropna().unique()
         unique_dates.sort()  # Sort dates if needed
 
         # Start filling the first column (A) with these unique dates, beginning at row 2

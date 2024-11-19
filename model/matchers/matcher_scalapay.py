@@ -9,12 +9,10 @@ class ScalapayMatcher(PaymentMatcher):
 
     def match(self, mese, anno):
 
-        df_full = self.handle_load_data("Scalapay", mese, anno)
+        df_full, columns = self.handle_load_data("Scalapay", mese, anno)
         
         if len(df_full) == 0:
             raise SkipMatcherException("Non ci sono pagamenti con Scalapay")
-        
-        columns = df_full.columns
 
         df = df_full.groupby('Merchant ID', as_index=False, dropna=False).agg({'Import lordo': 'sum',        # Sum the 'Lordo' values
                                                                                 'Data acquisto/rimborso': 'first',      # Take the first 'Valuta' value for each group

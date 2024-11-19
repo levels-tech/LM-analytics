@@ -20,12 +20,10 @@ class BonificoMatcher(PaymentMatcher):
             r'sportello automatico',
         ]
         
-        df_full = self.handle_load_data("Bonifici", mese, anno)
+        df_full, columns = self.handle_load_data("Bonifici", mese, anno)
         
         if len(df_full) == 0:
             raise SkipMatcherException("Non ci sono pagamenti con Bonifici")
-        
-        columns = df_full.columns
         
         mask = ~df_full['Operazione'].str.contains('|'.join(operations_patterns), case=False, regex=True, na=False)
         df_full = df_full[mask]
