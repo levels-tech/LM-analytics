@@ -48,30 +48,6 @@ class MatcherRunner:
 
         final_mask = mask_rilevanti & nan_mask & check_mask & total_mask & gioelli_mask
         self.df_ordini_all.loc[final_mask, "CHECK"] = "VALORE NAN"
-
-
-
-        # self.df_ordini_all.loc[mask_rilevanti & nan_mask & check_mask, "CHECK"] = "VALORE NAN"
-
-        # # Get the rows where CHECK is "VALORE NAN"
-        # nan_rows = self.df_ordini_all.loc[mask_rilevanti & nan_mask & check_mask & total_mask]# self.df_ordini_all[self.df_ordini_all["CHECK"] == "VALORE NAN"]
-
-        # # Find which columns have NaN values in these rows
-        # nan_columns = nan_rows[colonne_non_na].isna().any(axis=0)
-        # nan_column_names = nan_columns[nan_columns].index.tolist()
-
-        # print("Columns with NaN values:")
-        # for col in nan_column_names:
-        #     print(f"- {col}")
-
-        # # If you want to see which columns are NaN for each row:
-        # print("\nDetailed NaN analysis by row:")
-        # for idx, row in nan_rows.iterrows():
-        #     nan_cols_in_row = row[colonne_non_na][row[colonne_non_na].isna()].index.tolist()
-        #     print(f"\nOrder {row['Name']}, {row['CHECK']}, {row["Total"]}:")
-        #     for col in nan_cols_in_row:
-        #         print(f"- {col}")
-        #     print()
             
         return self.df_ordini_all
 
@@ -84,15 +60,18 @@ class MatcherRunner:
         self.df_ordini_all["index_df"] = self.df_ordini_all.index
         pag["index_pag"] = pag.index
         merged = pd.merge(self.df_ordini_all[mask], pag[pag["CHECK"] == "NON TROVATO"], left_on=["Total", "giorno"], right_on = ["Importo Pagato", "giorno"], how = "inner")
+        print(merged.columns)
         
         if len(merged) > 0:
             for _, row in merged.iterrows():
                 idx_df = row["index_df"] 
                 idx_pag = row["index_pag"] 
                 metodo = row["Metodo"]
+                brand = row["Brand_x"]
                 self.df_ordini_all.loc[idx_df, "Payment Method"] = metodo
                 self.df_ordini_all.loc[idx_df, "CHECK"] = "VERO"
                 pag.loc[idx_pag, "CHECK"] = "VERO"
+                pag.loc[idx_pag, "Brand"] = brand
         else:
             self.df_ordini_all.loc[mask, "CHECK"] = "NON TROVATO"
 
@@ -128,6 +107,19 @@ class MatcherRunner:
                     pag.loc[mask_pagamenti, "CHECK"] = "VERO"
 
         return self.df_ordini_all, pag
+    
+
+    def handle_london(self):
+
+        # Mask for rows where CHECK is FALSO and Payment Methods contain '+'
+        mask = (self.df_ordini_all["Shipping Country"] == "GB") & (self.df_ordini_all["Location"] != "LIL House London") & (self.df_ordini_all["CHECK"] == "VERO")
+        
+        print("GB", self.df_ordini_all.loc[mask][["Name", "CHECK", "Location"]])
+
+        # Update the "CHECK" column to "LONDON" where the condition is true
+        self.df_ordini_all.loc[mask, "CHECK"] = "LONDON"
+
+        return self.df_ordini_all
 
 
     def run_all_matchers(self, mese, anno):
@@ -171,15 +163,23 @@ class MatcherRunner:
 
             # Select columns from each DataFrame in all_dfs before concatenating
             df_pagamenti = pd.concat([df for df in all_dfs], ignore_index=True)
-
+            # print("BONIFICO URGENTE 2", len(df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"]))
+            print("BONIFICO isa 2", df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"][["Importo", "CHECK", "Brand"]]) 
             self.df_ordini_all, df_pagamenti = check_partially_refunded(self.df_ordini_all, df_pagamenti)
+            # print("BONIFICO URGENTE 3", len(df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"]))
+            print("BONIFICO isa 3", df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"][["Importo", "CHECK", "Brand"]]) 
 
             self.df_ordini_all, df_pagamenti = self.handle_pagamenti_altri(df_pagamenti)
+            # print("BONIFICO URGENTE 4", len(df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"]))
+            print("BONIFICO isa 4", df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"][["Importo", "CHECK", "Brand"]]) 
             self.df_ordini_all, df_pagamenti = self.handle_pagamenti_methods_diversi(df_pagamenti)
+            # print("BONIFICO URGENTE 5", len(df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"]))
+            print("BONIFICO isa 5", df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"][["Importo", "CHECK", "Brand"]]) 
+
 
             self.df_ordini_all = self.possibili_pagamenti()
 
-            subset_columns = self.df_ordini_all.columns[:self.df_ordini_all.columns.get_loc("Payment References") + 1]
+            subset_columns = self.df_ordini_all.columns[:self.df_ordini_all.columns.get_loc("Payment References") + 2]
 
             self.df_ordini_all = self.df_ordini_all.sort_values('CHECK', key=lambda x: x.map({'VERO': 0, 'FALSO': 1, 'NON TROVATO': 2}))
             self.df_ordini_all = self.df_ordini_all.drop_duplicates(subset=subset_columns, keep='first')
@@ -188,6 +188,8 @@ class MatcherRunner:
             print("PAGAMENTI", df_pagamenti.CHECK.value_counts())
 
             self.df_ordini_all = self.handle_nan()
+            self.df_ordini_all = self.handle_london()
+
             self.df_ordini_all['Total'] = self.df_ordini_all.groupby('Name')['Total'].transform(lambda x: x.where(x.index == x.index[0], np.nan))
 
             self.df_ordini_all.to_excel("ordini.xlsx")

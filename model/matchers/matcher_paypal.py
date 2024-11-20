@@ -44,4 +44,6 @@ class PaypalMatcher(PaymentMatcher):
         df_full["CHECK"] = df_full["CHECK"].fillna("NON TROVATO")
         df_full["Metodo"] = "PayPal Express Checkout"
 
+        print("aypal rimborsi", df_full[df_full["Tipo"] == "Rimborso di pagamento"]["CHECK"])
+
         return df_check, df_full, columns

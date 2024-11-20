@@ -54,8 +54,11 @@ colonne_to_drop = ["CHECK", 'Name', 'Shipping', 'Discount Code', 'Discount Amoun
 
 payments = ["Bonifico", "PayPal Express Checkout", "Qromo", "Satispay", "Scalapay", "Shopify Payments", "Gift Card", "Cash"]      
 
-colonne_essenziali_pagamenti =  ['Name', 'Paid at', 'Lineitem quantity', 'Lineitem sku', "Shipping Country", 'Location']      
+colonne_essenziali_pagamenti =  ['Name', 'Paid at', 'Lineitem quantity', 'Lineitem sku', "Shipping Country", 'Location']    
 
+exclude_skus = ['15790000893', '15790000914', '15790001247', '15790001060', '15790001068', '15790001083', '15790001059', '15790000888', 
+                        '15790000892', '15790000689', '15790001064', '15790000687', '15790000894', '15790000916', '15790000890', '15790001070', 
+                        '15790001065', '15790001073', '15790000891', '15790001502', '']
 
 # Initialize session state variables
 if 'processed_data' not in st.session_state:
@@ -80,7 +83,8 @@ if 'df_columns' not in st.session_state:
     st.session_state.df_columns = None
 if 'pagamenti_columns' not in st.session_state:
     st.session_state.pagamenti_columns = None
-
+if 'sku_da_escludere' not in st.session_state:
+    st.session_state.sku_da_escludere = exclude_skus
 
 # Title of the page
 st.title("Check Pagamenti LIL Milan e AGEE")
@@ -243,8 +247,10 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     if len(lil_df) > 0:
         st.write("")
         st.subheader("Ordini da controllare LIL Milan")
+
+        lil_df_sorted = lil_df.sort_values(by=["CHECK", "Name"])
             
-        names_check = lil_df[lil_df['Name'].notna()]['Name'].unique()
+        names_check = lil_df_sorted[lil_df_sorted['Name'].notna()]['Name'].unique()
         st.write(f"{len(names_check)} ordini su {names_count_lil}")
             
         for name in names_check:
@@ -267,11 +273,24 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                     else:
                         st.write(f"Il totale non coincide con l'importo effettivamente incassato. Modificare i valori delle colonne opportune.")
+                        
+                        if name_df["Shipping Country"].values[0] == "GB":
+                            st.write("Verificare se la Location è LIL House London")
+                        
                         st.write(f"Importo effettivamente incassato: **{name_df['Importo Pagato'].values[0]}**")
+
                 
                 elif check == "NON TROVATO":
                     st.write(f"Non è stato trovato un pagamento relativo all'ordine. Modificare i valori delle colonne opportune.")
+
+                    if name_df["Shipping Country"].values[0] == "GB":
+                            st.write("Verificare se la Location è LIL House London")
+                            
                     st.write(f"Importo effettivamente incassato: **0**")
+
+                elif check == "LONDON":
+                    st.write(f"Il total è corretto, verificare se l'ordine è di LIL House London.")
+                    st.write(f"Location attuale: **{name_df['Location'].values[0]}**")
 
                 st.dataframe(name_df[colonne], use_container_width=True)
 
@@ -689,8 +708,10 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     if len(agee_df) > 0:
         st.write("")
         st.subheader("Ordini da controllare AGEE")
+
+        agee_df_sorted = agee_df.sort_values(by=["CHECK", "Name"])
             
-        names_check = agee_df[agee_df['Name'].notna()]['Name'].unique()
+        names_check = agee_df_sorted[agee_df_sorted['Name'].notna()]['Name'].unique()    
         st.write(f"{len(names_check)} ordini su {names_count_agee}")
             
         for name in names_check:
@@ -1142,7 +1163,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
     # ordini_finiti = st.button("Ordini Finiti", key = "ordini_finiti")
     st.write(modified_count, len(lil_df.Name.unique()) + len(agee_df.Name.unique()))
-    can_proceed = modified_count == len(lil_df.Name.unique()) + len(agee_df.Name.unique())
+    can_proceed = modified_count >= 0 # len(lil_df.Name.unique()) + len(agee_df.Name.unique())
     # print(len(lil_df) + len(agee_df))
 
     if can_proceed:
@@ -1156,6 +1177,8 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
         # if order_changes_complete:
         pagamenti = aggiungi_pagamenti(st.session_state.pagamenti, pagamenti_da_aggiungere)
         st.session_state.pagamenti = pagamenti
+        print("BONIFICO URGENTE 6", len(st.session_state.pagamenti[st.session_state.pagamenti["Metodo"] == "Bonifico"]))
+        print(st.session_state.pagamenti[st.session_state.pagamenti["Metodo"] == "Bonifico"])
             
         p =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] == "NON TROVATO")].copy()
         # pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] == "NON TROVATO")].copy()
@@ -1212,8 +1235,9 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                             key=choice_key)
 
                     # Show order number and location input if "Si" is selected
-                    new_values = [None, None, None, None, None, None, None, None, None]  # Initialize list to hold order number, date, quantities, sku, country and location
+                    
                     if include_choice == "Si":
+                        new_values = [None, None, None, None, None, None, None, None, None, None]  # Initialize list to hold order number, date, quantities, sku, country and location
                         # st.write("Inserire le seguqenti informazioni")# per ognuna di queste colonne: **{', '.join(colonne_essenziali_pagamenti)}**")
                                                                 
                         st.write("Inserire le seguenti informazioni")
@@ -1251,33 +1275,63 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                                             key=total_quantity_key)
                         
                         all_skus = []
+                        all_names = []
                         all_quantities = []
+                        all_included = []
+
                         for i in range(total_quantity):
+                            name_key = f"name_{idx}_{i}" 
                             sku_key = f"sku_{idx}_{i}" 
                             quantity_key = f"quantity_{idx}_{i}"
+                            include_key = f"include_{idx}_{i}"  # Unique key for the include checkbox
 
-                            sku = st.text_input(f"Inserire lo sku dell'item {i+1}",
-                                                value = str(),
-                                                key=sku_key)
+                            sku = st.text_input(
+                                f"Inserire lo sku dell'item {i+1}",
+                                value=str(),
+                                key=sku_key
+                            )
                             
-                            quantity_items =  st.number_input(f"Inserire la quantità dell'item {i+1}",
-                                                            min_value=0,  # minimum allowed value
-                                                            value=1,      # default value
-                                                            step=1,       # increment by whole numbers
-                                                            key=quantity_key)
+                            quantity_items = st.number_input(
+                                f"Inserire la quantità dell'item {i+1}",
+                                min_value=0,  # minimum allowed value
+                                value=1,      # default value
+                                step=1,       # increment by whole numbers
+                                key=quantity_key
+                            )
                             
+                            name_items = st.text_input(
+                                f"Inserire il name dell'item {i+1}",
+                                value=str(),
+                                key=name_key
+                            )
+                            
+                            # Checkbox for inclusion
+                            include_in_analysis = st.checkbox(
+                                "Item da includere nelle analisi di unità vendute",
+                                value=True,  # Checked by default
+                                key=include_key
+                            )
+                            
+                            # Save the state of inclusion
                             if sku:  # Only check if a value was entered
                                 try:
-                                    # new_value = float(new_value)
                                     if len(sku) == 12 and sku.isdigit():    
                                         all_skus.append(sku)
                                         all_quantities.append(quantity_items)
+                                        all_names.append(name_items)
+
+                                        if not include_in_analysis:
+                                            if sku not in st.session_state.sku_da_escludere:
+                                                st.session_state.sku_da_escludere.append(sku)
+
                                 except ValueError:
                                     st.error("Lo sku inserito non ha 12 cifre. Ricontrollare.")
                                     all_required_fields_filled = False
-                        
+
+
                         new_values[3] = all_skus
                         new_values[4] = all_quantities
+                        new_values[5] = all_names
 
                         #Shipping Country
                         selected_country = st.text_input("Inserire il codice dello Shipping Country (e.g. IT)", key=country_key)
@@ -1286,25 +1340,29 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             try:
                                 # Validation: ensure it's exactly 2 uppercase letters
                                 if len(selected_country) == 2 and selected_country.isalpha():
-                                    new_values[5] = selected_country.upper()
+                                    new_values[6] = selected_country.upper()
                             except ValueError:
                                 st.error("Il codice del paese deve essere esattamente di 2 lettere.")
                                 all_required_fields_filled = False
 
                         #Payment Method
-                        new_values[6] = metodo  # Save selected location
+                        new_values[7] = metodo  # Save selected location
                         
                         #Location
                         locations = ["LIL House", "Firgun House", "LIL House London"]
                         selected_location = st.selectbox("Seleziona la Location dell'ordine relativo al pagamento:", locations, key=location_key)
 
-                        new_values[7] = selected_location  # Save selected location
+                        new_values[8] = selected_location  # Save selected location
 
                         #Brand
                         brand = ["LIL", "AGEE"]
                         selected_brand = st.selectbox("Seleziona il Brand dell'ordine relativo al pagamento:", brand, key=brand_key)
 
-                        new_values[8] = selected_brand  # Save selected location
+                        new_values[9] = selected_brand  # Save selected location
+
+                    else:
+                        new_values = [None, None, None, None, None, None, None, None, None, None]  # Initialize list to hold order number, date, quantities, sku, country and location
+
                             
                         # Add a submit button
                     submit = st.button(
@@ -1351,71 +1409,81 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                 st.error(error_message)
                                 all_required_fields_filled = False
 
-                        nome_usato, totale_usato = get_nomi(st.session_state.processed_data, order_num)
-                        # st.write(nome_usato, totale_usato)
-                        # lista = sorted(st.session_state.processed_data["Name"].dropna().unique())
-                        # st.write(lista)
+                            nome_usato, totale_usato = get_nomi(st.session_state.processed_data, order_num)
+                            # st.write(nome_usato, totale_usato)
+                            # lista = sorted(st.session_state.processed_data["Name"].dropna().unique())
+                            # st.write(lista)
 
-                        if nome_usato:
-                            if str(order_num) in orders_extra.keys():
-                                # st.write("yes", order_num)
-                                if row["Importo Pagato"] == orders_extra[order_num] or row["Importo Pagato"] - orders_extra[order_num] == 0:
-                                    # st.write(row["Importo Pagato"], orders_extra[order_num])
-                                    # Proceed with update
-                                    new_result, new_pagamenti = update_df(st.session_state.processed_data, new_values, idx, st.session_state.pagamenti)
-                                    st.session_state.processed_data = new_result
-                                    st.session_state.pagamenti = new_pagamenti
-                                    st.session_state.saved_updates.add(idx)
-                                    st.session_state[f'success_{idx}'] = True
-                                else:
-                                    st.session_state[f'ordine_esistente_mancante_totale_{idx}'] = True
-                                    st.session_state[f'useful_data_{idx}'] = {
-                                                    'ordine': order_num,
-                                                    'importo': row["Importo Pagato"], 
-                                                    "new_values": new_values
-                                                }
-                            else:
+                            if nome_usato:
+                                # if str(order_num) in orders_extra.keys():
+                                #     # st.write("yes", order_num)
+                                #     if row["Importo Pagato"] == orders_extra[order_num] or row["Importo Pagato"] - orders_extra[order_num] == 0:
+                                #         # st.write(row["Importo Pagato"], orders_extra[order_num])
+                                #         # Proceed with update
+                                #         new_result, new_pagamenti = update_df(st.session_state.processed_data, new_values, idx, st.session_state.pagamenti)
+                                #         st.session_state.processed_data = new_result
+                                #         st.session_state.pagamenti = new_pagamenti
+                                #         st.session_state.saved_updates.add(idx)
+                                #         st.session_state[f'success_{idx}'] = True
+                                #     else:
+                                #         st.session_state[f'ordine_esistente_mancante_totale_{idx}'] = True
+                                #         st.session_state[f'useful_data_{idx}'] = {
+                                #                         'ordine': order_num,
+                                #                         'importo': row["Importo Pagato"], 
+                                #                         "new_values": new_values
+                                #                     }
+                                # else:
                                 st.session_state[f'ordine_esistente_tutto_totale_{idx}'] = True
                                 st.session_state[f'useful_data_{idx}'] = {
                                                     'ordine': order_num,
                                                     'importo': totale_usato, 
                                                     "new_values": new_values
                                                 }
+                            else:
+                                # No order match, proceed with update
+                                new_result, new_pagamenti = update_df(st.session_state.processed_data, new_values, idx, st.session_state.pagamenti)
+                                st.session_state.processed_data = new_result
+                                st.session_state.pagamenti = new_pagamenti
+                                st.session_state.saved_updates.add(idx)
+                                st.session_state[f'success_{idx}'] = True
+                        
                         else:
-                            # No order match, proceed with update
-                            new_result, new_pagamenti = update_df(st.session_state.processed_data, new_values, idx, st.session_state.pagamenti)
-                            st.session_state.processed_data = new_result
-                            st.session_state.pagamenti = new_pagamenti
-                            st.session_state.saved_updates.add(idx)
-                            st.session_state[f'success_{idx}'] = True
+                                # No order match, proceed with update
+                                new_result, new_pagamenti = update_df(st.session_state.processed_data, new_values, idx, st.session_state.pagamenti)
+                                st.session_state.processed_data = new_result
+                                st.session_state.pagamenti = new_pagamenti
+                                st.session_state.saved_updates.add(idx)
+                                st.session_state[f'success_{idx}'] = True
    
 
 ################
                 # Show confirmation form if needed
-                if f'ordine_esistente_mancante_totale_{idx}' in st.session_state and st.session_state[f'ordine_esistente_mancante_totale_{idx}']:
-                    ordine = st.session_state[f'useful_data_{idx}']["ordine"]
-                    importo = st.session_state[f'useful_data_{idx}']["importo"]
-                    valori =  st.session_state[f'useful_data_{idx}']["new_values"]
-                    st.error(f"L'ordine {ordine} è già stato assegnato a un pagamento. Risultano ancora da pagare {orders_extra[ordine]}€, non {importo}€. Assegnare comunque questo pagamento all'ordine?")
+                # if f'ordine_esistente_mancante_totale_{idx}' in st.session_state and st.session_state[f'ordine_esistente_mancante_totale_{idx}']:
+                #     ordine = st.session_state[f'useful_data_{idx}']["ordine"]
+                #     importo = st.session_state[f'useful_data_{idx}']["importo"]
+                #     valori =  st.session_state[f'useful_data_{idx}']["new_values"]
+                #     st.error(f"L'ordine {ordine} è già stato assegnato a un pagamento. Risultano ancora da pagare {orders_extra[ordine]}€, non {importo}€. Assegnare comunque questo pagamento all'ordine?")
 
-                    with st.form(f"assegna_{idx}"):
-                        confirm_submit = st.form_submit_button("Assegna")
+                #     with st.form(f"assegna_{idx}"):
+                #         confirm_submit = st.form_submit_button("Assegna")
                         
-                        if confirm_submit:
-                            new_result, new_pagamenti = update_df(st.session_state.processed_data, valori, idx, st.session_state.pagamenti)
-                            st.session_state.processed_data = new_result
-                            st.session_state.pagamenti = new_pagamenti
-                            st.session_state.saved_updates.add(idx)
-                            st.session_state[f'success_{idx}'] = True
-                            st.session_state[f'ordine_esistente_mancante_totale_{idx}'] = False
-                            # st.success("Modifiche salvate con successo!")
-                            st.session_state[f'success_{idx}'] = True
+                #         if confirm_submit:
+                #             new_result, new_pagamenti = update_df(st.session_state.processed_data, valori, idx, st.session_state.pagamenti)
+                #             st.session_state.processed_data = new_result
+                #             st.session_state.pagamenti = new_pagamenti
+                #             st.session_state.saved_updates.add(idx)
+                #             st.session_state[f'success_{idx}'] = True
+                #             st.session_state[f'ordine_esistente_mancante_totale_{idx}'] = False
+                #             # st.success("Modifiche salvate con successo!")
+                #             st.session_state[f'success_{idx}'] = True
 
-                if f'ordine_esistente_tutto_totale_{name}' in st.session_state and st.session_state[f'needs_aggiungi_check_{name}']:
+                if f'ordine_esistente_tutto_totale_{idx}' in st.session_state and st.session_state[f'ordine_esistente_tutto_totale_{idx}']:
                     ordine = st.session_state[f'useful_data_{idx}']["ordine"]
                     importo = st.session_state[f'useful_data_{idx}']["importo"]
                     valori =  st.session_state[f'useful_data_{idx}']["new_values"]
-                    st.error(f"L'ordine {ordine} è già stato assegnato a un pagamento. Aggiungere questo pagamento al totale attuale di {importo}€ dell'ordine?")
+                    totale_pagamento =  valori[2]
+                    st.warning(f"L'ordine {ordine} è già stato assegnato a un pagamento. Aggiungere questo pagamento al totale attuale di {importo}€ dell'ordine?")
+                    st.warning(f"Il totale finale sarebbe di {importo + totale_pagamento}€")
 
                     with st.form(f"aggiungere_{idx}"):
                         confirm_submit = st.form_submit_button("Aggiungere")
@@ -1444,6 +1512,8 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     #     st.markdown("---")
 
     st.write(len(st.session_state.processed_data), len(st.session_state.pagamenti))
+    print("BONIFICO URGENTE 6", len(st.session_state.pagamenti[st.session_state.pagamenti["Metodo"] == "Bonifico"]))
+    print(st.session_state.pagamenti[st.session_state.pagamenti["Metodo"] == "Bonifico"])
         
     excel_filename = st.text_input("Inserire il nome da dare al file Excel (senza .xlsx):", value="output_file")
     

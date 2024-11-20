@@ -318,7 +318,8 @@ class PaymentMatcher:
     #merge il df di ordini e di pagamenti
     def merge_dfs(self, ordini, pagamenti):
         merchant_ids = pagamenti["Numero Pagamento"].astype(str).str.strip().tolist()
-        ordini['Matched Reference'] = ordini['Payment References'].apply(lambda ref: self.match_references(ref, merchant_ids))
+        # ordini['Matched Reference'] = ordini['Payment References'].apply(lambda ref: self.match_references(ref, merchant_ids))
+        ordini['Matched Reference'] = ordini['Payment References'].dropna().apply(lambda ref: self.match_references(ref, merchant_ids))
         ordini = ordini.explode('Matched Reference')
         ordini.reset_index(drop=True, inplace=True)
 

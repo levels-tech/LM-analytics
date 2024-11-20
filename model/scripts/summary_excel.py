@@ -44,8 +44,15 @@ class OrderSummary:
             wb.save(self.filename)
 
             # columns_state = ColumnsState.get_instance()
-            df_columns = st.session_state.df_columns
+            paid_at_pos = st.session_state.df_columns.get_loc('Paid at')
+            df_columns = list(st.session_state.df_columns)
+            df_columns.insert(paid_at_pos + 1, 'Data Giorno')
+
+            print("colonne", df_columns)
             pagamenti_columns = st.session_state.pagamenti_columns
+            for metodo, columns in pagamenti_columns.items():
+                pagamenti_columns[metodo] = list(columns)
+                pagamenti_columns[metodo].append("CHECK")
 
             # Apply the function to each 'Name' group
             self.df_ordini_all = self.df_ordini_all.groupby('Name', group_keys=False).apply(self.process_group)
@@ -79,6 +86,8 @@ class OrderSummary:
 
                 # Write payment sheets
                 mask_lil_p = self.pagamenti["Brand"] == "Ordini LIL"
+                print("BONIFICO URGENTE 8", len(self.pagamenti[mask_lil_p][self.pagamenti[mask_lil_p]["Metodo"] == "Bonifico"]))
+                print(self.pagamenti[mask_lil_p][self.pagamenti[mask_lil_p]["Metodo"] == "Bonifico"])
                 mask_agee_p = self.pagamenti["Brand"] == "Ordini AGEE"
 
                 if mask_lil_p.any():
@@ -165,6 +174,8 @@ class OrderSummary:
  
     # Method to create stats for each store location
     def create_location_stats(self, df, start_row, summary_sheet, store_name):
+
+        df['Lineitem quantity'] = df['Lineitem quantity'].astype(int)
         location_stats = df.groupby('Location').agg({'Name': 'nunique',
                                                      'Lineitem quantity': 'sum'}).reset_index()
         stats_dict = location_stats.set_index('Location').to_dict()
@@ -201,28 +212,6 @@ class OrderSummary:
         summary_sheet[f'O{row+1}'] = f'=SUM(O{start_row}:O{row})'
         summary_sheet[f'P{row+1}'] = f'=O{row+1}/N{row+1}'
         summary_sheet[f'P{row+1}'].number_format = '0.00'
-
-        # for idx, location_label in enumerate(title_of_locations, start=start_row):
-        #     summary_sheet[f'H{idx}'] = location_label
-        #     summary_sheet[f'I{idx}'] = (
-        #         f'=SUMIFS(\'Ordini {store_name}\'!$L:$L, '
-        #         f'\'Ordini {store_name}\'!$BB:$BB, "{location_label}")'
-        #     )
-        #     unique_orders = stats_dict['Name'].get(location_label, 0)
-        #     items_quantity = stats_dict['Lineitem quantity'].get(location_label, 0)
-
-        #     summary_sheet[f'J{idx}'] = unique_orders
-        #     summary_sheet[f'K{idx}'] = items_quantity
-        #     summary_sheet[f'L{idx}'] = f'=K{idx}/J{idx}'
-        #     summary_sheet[f'L{idx}'].number_format = '0.00'
-
-        # summary_sheet[f'H{idx+1}'] = 'Totale'
-        # summary_sheet[f'H{idx+1}'].font = Font(bold=True)
-        # summary_sheet[f'I{idx+1}'] = f'=SUM(I{start_row}:I{idx})'
-        # summary_sheet[f'J{idx+1}'] = f'=SUM(J{start_row}:J{idx})'
-        # summary_sheet[f'K{idx+1}'] = f'=SUM(K{start_row}:K{idx})'
-        # summary_sheet[f'L{idx+1}'] = f'=K{idx+1}/J{idx+1}'
-        # summary_sheet[f'L{idx+1}'].number_format = '0.00'
 
         return start_row + len(title_of_locations) + 3
 
@@ -261,17 +250,27 @@ class OrderSummary:
             if payment_label == "Cash":
                 summary_sheet[f'D{row}'] = '-'
                 summary_sheet[f'D{row}'].alignment = Alignment(horizontal='center')
-                
+
+                summary_sheet[f'E{row}'] = '-'
+                summary_sheet[f'E{row}'].alignment = Alignment(horizontal='center')
+
                 summary_sheet[f'H{row}'] = '-'
                 summary_sheet[f'H{row}'].alignment = Alignment(horizontal='center')
+                
+                summary_sheet[f'I{row}'] = '-'
+                summary_sheet[f'I{row}'].alignment = Alignment(horizontal='center')
             
             elif payment_label == "Qromo":
                 summary_sheet[f'D{row}'] = f'=IFERROR(SUM(\'{payment_label}_LIL\'!C:C) - SUM(\'{payment_label}_LIL\'!D:D), 0)'
                 summary_sheet[f'H{row}'] = f'=IFERROR(SUM(\'{payment_label}_AGEE\'!C:C) - SUM(\'{payment_label}_AGEE\'!D:D), 0)'
+                summary_sheet[f'E{row}'] = f'=D{row}-C{row}'
+                summary_sheet[f'I{row}'] = f'=H{row}-G{row}'
             
             else:
                 summary_sheet[f'D{row}'] = f'=IFERROR(SUM(\'{payment_label}_LIL\'!{payment_amount}:{payment_amount}), 0)'
                 summary_sheet[f'H{row}'] = f'=IFERROR(SUM(\'{payment_label}_AGEE\'!{payment_amount}:{payment_amount}), 0)'
+                summary_sheet[f'E{row}'] = f'=D{row}-C{row}'
+                summary_sheet[f'I{row}'] = f'=H{row}-G{row}'
 
             row += 1
 
@@ -288,8 +287,21 @@ class OrderSummary:
             cell.value = value
             cell.font = bold_font
 
-        exclude_strings = ["Luxury Pack", "Engraving", "E-gift", "Repair", "Whatever Tote", "Piercing Party", "LIL Bag"]
-        df_ordini_gioielli = self.df_ordini_all[~self.df_ordini_all['Lineitem name'].str.contains('|'.join(exclude_strings), case=False, na=False)] #SKU!!!!!
+        exclude_strings = ["Luxury Pack", "Engraving", "E-Gift", "Repair", "Whatever Tote", "Piercing Party", "LIL Bag"]
+        exclude_skus = st.session_state.sku_da_escludere
+
+        # dic_to_esclude = {
+        #     "Luxury Pack": ["15790000687"], 
+        #     "Engraving": ["15790001502", "15790001247"],
+        #     "E-Gift": ["15790000888", "15790000890","15790000892", "15790000893", "15790000894", "15790001073", "15790000891"],
+        #     "Repair": ["15790000916", "15790001059", "15790001060", "15790001064", "15790001065", "15790001068", "15790001070", "15790001083"],
+        #     "Whatever Tote": ["15790000914"],
+        #     "Piercing Party": [""],
+        #     "LIL Bag": ["15790000687", "15790000689"]
+        # }
+
+        df_ordini_gioielli = self.df_ordini_all[~self.df_ordini_all['Lineitem name'].str.contains('|'.join(exclude_strings), case=False, na=False) |
+                                                ~self.df_ordini_all['Lineitem sku'].isin(exclude_skus)]
     
         df_lil = df_ordini_gioielli[(df_ordini_gioielli['Brand'] == 'Ordini LIL') 
                                     & ((df_ordini_gioielli['CHECK'] != 'ESCLUSO'))]
@@ -377,25 +389,7 @@ class OrderSummary:
 
         daily_sheet[f'{chr(64 + ultima_col_index + 2)}{idx+2}'] = f"=SUM(D{idx+2}:{ultima_lettera}{idx+2})"
         daily_sheet[f'{chr(64 + ultima_col_index + 2)}{idx+2}'].font = Font(bold=True)
-    
 
-        # df_ordini_locations = self.df_ordini_all[self.df_ordini_all["Location"].isin(["Firgun House", "LIL House", "LIL House London"])]
-        # df_ordini_locations_lil = df_ordini_locations[df_ordini_locations["Brand"] == "Ordini LIL"]
-        # df_ordini_locations_agee = df_ordini_locations[df_ordini_locations["Brand"] == "Ordini AGEE"]
-
-        # daily_country_totals_lil = df_ordini_locations_lil.groupby(['Giorno', 'Shipping Country'])['Total'].sum().reset_index().sort_values(['Giorno', 'Shipping Country']).rename(columns={'Shipping Country': 'Country', 'Total': 'Total_LIL'})
-        # daily_country_totals_agee = df_ordini_locations_agee.groupby(['Giorno', 'Shipping Country'])['Total'].sum().reset_index().sort_values(['Giorno', 'Shipping Country']).rename(columns={'Shipping Country': 'Country', 'Total': 'Total_AGEE'})
-
-        # daily_country_totals = pd.merge(daily_country_totals_lil, daily_country_totals_agee, on=["Giorno", "Country"], how="outer").fillna(0)
-
-        # for idx, row in enumerate(daily_country_totals.itertuples(), start=2):
-        #     daily_sheet[f'A{idx}'] = row.Giorno
-        #     daily_sheet[f'B{idx}'] = row.Country
-        #     daily_sheet[f'C{idx}'] = row.Total_LIL
-        #     daily_sheet[f'D{idx}'] = row.Total_AGEE
-        #     daily_sheet[f'E{idx}'] = f'=C{idx}+D{idx}'
-
-        #     row = idx
 
         workbook.save(self.filename)
 

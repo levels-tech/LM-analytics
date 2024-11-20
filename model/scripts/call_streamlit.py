@@ -140,7 +140,7 @@ def aggiungi_pagamenti(df, nuovi):
     for numero in nuovi.keys():
         df.loc[df["Numero Pagamento"] == numero, "CHECK"] = "VERO"
 
-    df = df.drop_duplicates(subset = ["Numero Pagamento"])
+    # df = df.drop_duplicates(subset = ["Numero Pagamento"])
     
     df.loc[(df["CHECK"] == "FALSO"), "CHECK"] = "NON TROVATO"
 
@@ -204,17 +204,16 @@ def update_df(df, new_value, nome, pagamenti = None):
             totale = new_value[2]
             skus = new_value[3]
             quantities = new_value[4]
-            country = new_value[5]
-            metodo = new_value[6]
-            location = new_value[7]
-            brand = new_value[8]
+            items_name = new_value[5]
+            country = new_value[6]
+            metodo = new_value[7]
+            location = new_value[8]
+            brand = new_value[9]
 
             if name in df["Name"].unique(): #esiste già lo stesso ordine
 
-                rows_esistenti = df[df["Name"] == name] #["Numero Pagamento"] 
-                # rows_esistenti = pagamenti[pagamenti["Numero Pagamento"].isin(numeri_rows_esistenti)]
-                print(rows_esistenti.columns)
-
+                rows_esistenti = df[df["Name"] == name] 
+            
                 # data_pagamenti = rows_esistenti["Paid at"].values[0]
                 totale_pagamenti = rows_esistenti["Total"].values[0]
                 skus_pagamenti = rows_esistenti["Lineitem sku"].tolist()
@@ -225,7 +224,6 @@ def update_df(df, new_value, nome, pagamenti = None):
                 brand_pagamenti = rows_esistenti["Brand"].values[0]
 
                 if metodo == metodo_pagamenti:  
-
                    # Get the indices of existing rows
                     existing_indices = df[df["Name"] == name].index
                     df.loc[existing_indices[0], "Total"] = float(totale_pagamenti) + float(totale)
@@ -239,7 +237,7 @@ def update_df(df, new_value, nome, pagamenti = None):
                             matched_skus.add(sku)
                             for pos in matching_positions:
                                 if float(quantities_pagamenti[pos]) == 0:
-                                    df.loc[existing_indices[pos], "Lineitem quantity"] = str(quantities[i])
+                                    df.loc[existing_indices[pos], "Lineitem quantity"] = int(quantities[i])
                                     break
 
                     # Add new rows for unmatched SKUs
@@ -249,7 +247,8 @@ def update_df(df, new_value, nome, pagamenti = None):
                                 "Name": str(name),
                                 "Paid at": str(data),
                                 "Total": float('nan'),
-                                "Lineitem quantity": str(quantities[i]),
+                                "Lineitem quantity": int(quantities[i]),
+                                "Lineitem name": str(items_name[i]),
                                 "Lineitem sku": str(sku),
                                 "Shipping Country": str(country).strip(),
                                 "Location": str(location),
@@ -272,12 +271,13 @@ def update_df(df, new_value, nome, pagamenti = None):
                         
                         if matching_positions:
                             for pos in matching_positions:
-                                new_quantity = "0" if float(quantities_pagamenti[pos]) != 0 else str(quantities[i])
+                                new_quantity = 0 if float(quantities_pagamenti[pos]) != 0 else int(quantities[i])
                                 
                                 new_row = {
                                     "Name": str(name),
                                     "Paid at": str(data),
                                     "Total": float(totale) if first_row else float('nan'),
+                                    "Lineitem name": str(items_name[i]),
                                     "Lineitem quantity": new_quantity,
                                     "Lineitem sku": str(sku),
                                     "Shipping Country": str(country).strip(),
@@ -301,7 +301,8 @@ def update_df(df, new_value, nome, pagamenti = None):
                         "Name": str(name),
                         "Paid at": str(data),
                         "Total": float(totale) if i == 0 else float('nan'), 
-                        "Lineitem quantity": str(quantities[i]),
+                        "Lineitem name": str(items_name[i]),
+                        "Lineitem quantity": int(quantities[i]),
                         "Lineitem sku": str(skus[i]),
                         "Shipping Country": str(country).strip(),
                         "Location": str(location),

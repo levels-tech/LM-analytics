@@ -93,7 +93,8 @@ class Ordini:
                     (self.df['Shipping Method'] == "Standard"), "Location"] = "Firgun House"
         
         #Fill missing Location
-        location_nan = self.df.groupby('Name')['Location'].transform(lambda x: x.isna().all())
+        # location_nan = self.df.groupby('Name')['Location'].transform(lambda x: x.isna().all())
+        location_nan = self.df.groupby('Name')['Location'].transform('count') == 0
         self.df.loc[location_nan, 'Location'] = "Firgun House"
 
         #metti ESCLUSO agli ordini che non ci interessano
