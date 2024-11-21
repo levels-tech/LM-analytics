@@ -28,7 +28,8 @@ def check_files(file, name, mese, anno):
                    "Shopify AGEE": "Transaction Date",
                    "Shopify LIL": "Transaction Date"}
 
-    expected_date =  f"{str(anno)}-{str(mese):02}"
+    expected_date = f"{anno}-{str(mese).zfill(2)}"
+    print("expected date", expected_date)
     f_file = file.get(name, {}).get("file")
     
     if f_file: 
@@ -37,8 +38,12 @@ def check_files(file, name, mese, anno):
         else:
             f = pd.read_csv(f_file, dtype={date_column[name]: "string"}) #, encoding="ISO-8859-1")
         
+        print(name)
+        print(f[date_column[name]])
         f[date_column[name]] = f[date_column[name]].apply(reformat_date)
+        print(f[date_column[name]])
         f_filtered = f[f[date_column[name]].str[:7] == expected_date].copy()
+        print(f_filtered)
         if len(f_filtered) == 0:
             found_dates = sorted(f[date_column[name]].str[:7].unique())
             raise DateMismatchError(
@@ -102,6 +107,8 @@ def missing_fields(df, nome):
         to_check.append("Location")
     if df[df["Name"] == nome]["Payment Method"].str.contains(r'\+').all() & (~df[df["Name"] == nome]["Payment Method"].str.contains("Gift Card").all()):
         to_change.append("Payment Method")
+    if df[df["Name"] == nome]["Payment Method"].str.count(r'\+').ge(2).all():
+        to_change.append("Payment Method")
     
     return to_check, to_change
 
@@ -152,7 +159,7 @@ def aggiungi_pagamenti(df, nuovi):
 def update_df(df, new_value, nome, pagamenti = None):
     print("Entering update_df")  # Debug print to indicate the function is called
     
-    colonne_solo_idx = ["Total", 'Lineitem quantity', 'Lineitem name', 'Lineitem price', 'Lineitem compare at price',]   
+    colonne_solo_idx = ['Lineitem quantity', 'Lineitem name', 'Lineitem price', 'Lineitem compare at price',]   
 
     if pagamenti is None:
         # Get all row indices from new_value
@@ -174,6 +181,8 @@ def update_df(df, new_value, nome, pagamenti = None):
                 if column in colonne_solo_idx:
                     df.loc[row_idx, column] = value  # Update at the specific row index
                     print(f"Updated index {row_idx}: {df.loc[row_idx]}")
+                elif column == "Total":
+                    df.loc[first_index, column] = value
                 else:
                     df.loc[name_mask, column] = value
                     print(f"Updated {column}: {value}")
@@ -210,6 +219,8 @@ def update_df(df, new_value, nome, pagamenti = None):
             location = new_value[8]
             brand = new_value[9]
 
+            print("nomeeee", name)
+
             if name in df["Name"].unique(): #esiste già lo stesso ordine
 
                 rows_esistenti = df[df["Name"] == name] 
@@ -223,10 +234,17 @@ def update_df(df, new_value, nome, pagamenti = None):
                 # location_pagamenti = rows_esistenti["Location"].values[0]
                 brand_pagamenti = rows_esistenti["Brand"].values[0]
 
+                print("pagamento isa", metodo, metodo_pagamenti)
+
                 if metodo == metodo_pagamenti:  
                    # Get the indices of existing rows
                     existing_indices = df[df["Name"] == name].index
                     df.loc[existing_indices[0], "Total"] = float(totale_pagamenti) + float(totale)
+                    print("13-1009", totale_pagamenti, totale, existing_indices, df.loc[existing_indices[0], "Total"], pagamenti.loc[pagamenti["original_index"] == nome, "Brand"])
+                    pagamenti.loc[pagamenti["original_index"] == nome, "Brand"] = "Ordini "+str(brand)
+
+                    # if name == "#13-1009":
+                    print("13-1009", totale_pagamenti, totale, existing_indices, df.loc[existing_indices[0], "Total"])
 
                     # Handle matching SKUs
                     matched_skus = set()
@@ -253,18 +271,18 @@ def update_df(df, new_value, nome, pagamenti = None):
                                 "Shipping Country": str(country).strip(),
                                 "Location": str(location),
                                 "Payment Method": str(metodo),
-                                "Brand": "Ordini " + str(brand_pagamenti),
+                                "Brand": str(brand_pagamenti),
                                 "CHECK": "VERO",
                             }
                             new_rows.append(new_row)
                         
                         if new_rows:
                             df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) 
-                            pagamenti.loc[nome, "Brand"] = "Ordini "+str(brand)
-
+                        
                 else:
                     # Different payment method - create new rows based on SKU matching
                     first_row = True
+                    pagamenti.loc[pagamenti["original_index"] == nome, "Brand"] = "Ordini "+str(brand)
                     
                     for i, sku in enumerate(skus):
                         matching_positions = [j for j, s_p in enumerate(skus_pagamenti) if str(s_p) == str(sku)]
@@ -292,7 +310,7 @@ def update_df(df, new_value, nome, pagamenti = None):
                     
                     if new_rows:
                         df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) 
-                        pagamenti.loc[nome, "Brand"] = "Ordini "+str(brand)
+                        # pagamenti.loc[nome, "Brand"] = "Ordini "+str(brand)
 
             else: #non esiste già lo stesso ordine
                 st.write(len(skus))

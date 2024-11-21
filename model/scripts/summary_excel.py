@@ -56,6 +56,7 @@ class OrderSummary:
 
             # Apply the function to each 'Name' group
             self.df_ordini_all = self.df_ordini_all.groupby('Name', group_keys=False).apply(self.process_group)
+            print("lil 1", self.df_ordini_all[self.df_ordini_all["Name"] == "#11111"])
 
             # First write the basic DataFrames
             with pd.ExcelWriter(self.filename, engine='openpyxl', mode='a') as writer:
@@ -69,6 +70,7 @@ class OrderSummary:
                     lil.insert(paid_at_index + 1, "Data Giorno", lil["Paid at"].apply(self.reformat_date))
                     # lil = lil[lil.columns[: lil.columns.get_loc('Brand') + 1]]
                     lil = lil[df_columns]
+                    print("lil 2", lil[lil["Name"] == "#11111"])
 
                     # Write to Excel
                     lil.to_excel(writer, sheet_name='Ordini LIL', index=False)
@@ -304,9 +306,11 @@ class OrderSummary:
                                                 ~self.df_ordini_all['Lineitem sku'].isin(exclude_skus)]
     
         df_lil = df_ordini_gioielli[(df_ordini_gioielli['Brand'] == 'Ordini LIL') 
-                                    & ((df_ordini_gioielli['CHECK'] != 'ESCLUSO'))]
+                                    & (df_ordini_gioielli['CHECK'] != 'ESCLUSO')
+                                    & (df_ordini_gioielli['Total'] != 0)]
         df_agee = df_ordini_gioielli[(df_ordini_gioielli['Brand'] == 'Ordini AGEE') 
-                                     & ((df_ordini_gioielli['CHECK'] != 'ESCLUSO'))]
+                                     & (df_ordini_gioielli['CHECK'] != 'ESCLUSO')
+                                     & (df_ordini_gioielli['Total'] != 0)]
 
         start_row = 3
         start_row = self.create_location_stats(df_lil, start_row, summary_sheet, 'LIL')

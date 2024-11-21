@@ -24,10 +24,12 @@ class PaymentMatcher:
                         "Shopify AGEE": "Transaction Date",
                         "Shopify LIL": "Transaction Date"}
 
-        expected_date =  f"{str(anno)}-{str(mese):02}"
+        expected_date = f"{anno}-{str(mese).zfill(2)}"
         f_file = self.uploaded_files.get(name, {}).get("file")
         
         if f_file: 
+            print(name)
+            print()
             if name == "Bonifici":
                 excel_file = io.BytesIO(f_file.getvalue())
                 f = find_header_row(excel_file, "Importo")

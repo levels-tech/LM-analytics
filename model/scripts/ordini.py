@@ -56,6 +56,8 @@ class Ordini:
     def handle_payment_method(self):
 
         self.df["Payment Method"] = self.df["Payment Method"].str.replace("Custom (POS)", "Qromo")
+        self.df["Payment Method"] = self.df["Payment Method"].str.replace("QROMO", "Qromo")
+        # self.df['Payment Method'] = self.df['Payment Method'].str.strip().str.lower().replace('qromo', 'Qromo')
         self.df["Payment Method"] = self.df["Payment Method"].str.replace("custom|Wire Transfer", "Bonifico", regex=True)
 
         payments = ["Bonifico", "PayPal Express Checkout", "Qromo", "Satispay", "Scalapay", "Shopify Payments", "Gift Card", "Cash"]
@@ -274,7 +276,7 @@ class Ordini:
         fill_columns = ["Subtotal", "Shipping", "Total", "Discount Amount", "Refunded Amount", "Outstanding Balance"]
         self.df[fill_columns] = self.df[fill_columns].fillna(0)
         
-        colonne_non_na = ["Name", "Paid at", "Lineitem quantity", "Lineitem name", "Lineitem price", "Lineitem sku", 
+        colonne_non_na = ["Name", "Paid at", "Lineitem quantity", "Lineitem name", "Lineitem price", 
                         "Payment Method", "Location", "Shipping Country", "Payment References"]
         
         rilevanti = self.df[(self.df["CHECK"] != "ESCLUSO")]["Name"].unique()

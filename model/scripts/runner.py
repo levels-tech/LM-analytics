@@ -111,7 +111,7 @@ class MatcherRunner:
 
     def handle_london(self):
 
-        # Mask for rows where CHECK is FALSO and Payment Methods contain '+'
+        # Mask for rows where SHipping Country is GB
         mask = (self.df_ordini_all["Shipping Country"] == "GB") & (self.df_ordini_all["Location"] != "LIL House London") & (self.df_ordini_all["CHECK"] == "VERO")
         
         print("GB", self.df_ordini_all.loc[mask][["Name", "CHECK", "Location"]])
@@ -190,7 +190,9 @@ class MatcherRunner:
             self.df_ordini_all = self.handle_nan()
             self.df_ordini_all = self.handle_london()
 
-            self.df_ordini_all['Total'] = self.df_ordini_all.groupby('Name')['Total'].transform(lambda x: x.where(x.index == x.index[0], np.nan))
+            # self.df_ordini_all['Total'] = self.df_ordini_all.groupby('Name')['Total'].transform(lambda x: x.where(x.index == x.index[0], np.nan))
+            self.df_ordini_all.sort_index(inplace=True)
+            self.df_ordini_all['Total'] = self.df_ordini_all.groupby('Name')['Total'].transform(lambda x: x.where(x.index == x.index.min(), np.nan))
 
             self.df_ordini_all.to_excel("ordini.xlsx")
 
