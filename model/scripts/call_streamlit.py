@@ -29,7 +29,6 @@ def check_files(file, name, mese, anno):
                    "Shopify LIL": "Transaction Date"}
 
     expected_date = f"{anno}-{str(mese).zfill(2)}"
-    print("expected date", expected_date)
     f_file = file.get(name, {}).get("file")
     
     if f_file: 
@@ -38,12 +37,8 @@ def check_files(file, name, mese, anno):
         else:
             f = pd.read_csv(f_file, dtype={date_column[name]: "string"}) #, encoding="ISO-8859-1")
         
-        print(name)
-        print(f[date_column[name]])
         f[date_column[name]] = f[date_column[name]].apply(reformat_date)
-        print(f[date_column[name]])
         f_filtered = f[f[date_column[name]].str[:7] == expected_date].copy()
-        print(f_filtered)
         if len(f_filtered) == 0:
             found_dates = sorted(f[date_column[name]].str[:7].unique())
             raise DateMismatchError(
@@ -131,27 +126,66 @@ def add_row(df, diff, payment, nome, last_index):
     # Find the first row matching the name
     template_row = df[df['Name'] == nome].iloc[0].copy()
     
-    # Modify the specific columns
-    template_row['Total'] = diff
-    template_row['Payment Method'] = payment
-    template_row['Lineitem quantity'] = 0
-    template_row['original_index'] = last_index + 1
-    
-    # Add the new row to the dataframe
-    return pd.concat([df, pd.DataFrame([template_row])], ignore_index=True)
+    index = template_row["original_index"]
+    original_method = template_row["Payment Method"]
+    original_total = template_row["Total"]
 
+    # Handle cases when payment and diff are lists
+    if len(payment) > 1 and len(diff) > 1:
+        # Create one row for each combination of payment and diff
+        for pay, d in zip(payment, diff):
+            if pay == original_method:
+                df.loc[df['original_index'] == index, "Total"] = original_total + d
+            else:
+                new_row = template_row.copy()
+                new_row['Total'] = d
+                new_row['Payment Method'] = pay
+                new_row['Lineitem quantity'] = 0
+                new_row['original_index'] = last_index + 1
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                last_index += 1
 
-def aggiungi_pagamenti(df, nuovi):
+    # Handle cases when diff is a list
+    elif len(diff) > 1 and len(payment) == 1:
+        # Sum diff elements and create one row
+        if payment[0] == original_method:
+            df.loc[df['original_index'] == index, "Total"] = original_total + sum(diff)
+        else:
+            total_diff = sum(diff)
+            template_row['Total'] = total_diff
+            template_row['Payment Method'] = payment[0]  # Payment is a single value
+            template_row['Lineitem quantity'] = 0
+            template_row['original_index'] = last_index + 1
+            df = pd.concat([df, pd.DataFrame([template_row])], ignore_index=True)
+            
+    elif len(diff) == 1 and len(payment) == 1:
+        # Both payment and diff are single values
+        if payment[0] == original_method:
+            # Locate the first row of the subset where 'Name' matches 'nome'
+            df.loc[df['original_index'] == index, "Total"] = original_total + diff[0]
+        else:
+            template_row['Total'] = diff[0]
+            template_row['Payment Method'] = payment[0]
+            template_row['Lineitem quantity'] = 0
+            template_row['original_index'] = last_index + 1
+            df = pd.concat([df, pd.DataFrame([template_row])], ignore_index=True)
+
+    return df
+
+def aggiungi_pagamenti(df, nuovi_lil, nuovi_agee):
     print("Entering aggiungi pagamenti")  # Debug print to indicate the function is called
     
-    for numero in nuovi.keys():
-        df.loc[df["Numero Pagamento"] == numero, "CHECK"] = "VERO"
+    if nuovi_lil:
+        for numero in nuovi_lil.keys():
+            df.loc[df["Numero Pagamento"] == numero, "CHECK"] = "VERO"
+            df.loc[df["Numero Pagamento"] == numero, "Brand"] = "Ordini LIL"
 
-    # df = df.drop_duplicates(subset = ["Numero Pagamento"])
+    if nuovi_agee:
+        for numero in nuovi_agee.keys():
+            df.loc[df["Numero Pagamento"] == numero, "CHECK"] = "VERO"
+            df.loc[df["Numero Pagamento"] == numero, "Brand"] = "Ordini AGEE"
     
     df.loc[(df["CHECK"] == "FALSO"), "CHECK"] = "NON TROVATO"
-
-    # df.to_excel("pagamenti.xlsx")
   
     return df
 
@@ -219,8 +253,6 @@ def update_df(df, new_value, nome, pagamenti = None):
             location = new_value[8]
             brand = new_value[9]
 
-            print("nomeeee", name)
-
             if name in df["Name"].unique(): #esiste già lo stesso ordine
 
                 rows_esistenti = df[df["Name"] == name] 
@@ -234,17 +266,11 @@ def update_df(df, new_value, nome, pagamenti = None):
                 # location_pagamenti = rows_esistenti["Location"].values[0]
                 brand_pagamenti = rows_esistenti["Brand"].values[0]
 
-                print("pagamento isa", metodo, metodo_pagamenti)
-
                 if metodo == metodo_pagamenti:  
                    # Get the indices of existing rows
                     existing_indices = df[df["Name"] == name].index
                     df.loc[existing_indices[0], "Total"] = float(totale_pagamenti) + float(totale)
-                    print("13-1009", totale_pagamenti, totale, existing_indices, df.loc[existing_indices[0], "Total"], pagamenti.loc[pagamenti["original_index"] == nome, "Brand"])
                     pagamenti.loc[pagamenti["original_index"] == nome, "Brand"] = "Ordini "+str(brand)
-
-                    # if name == "#13-1009":
-                    print("13-1009", totale_pagamenti, totale, existing_indices, df.loc[existing_indices[0], "Total"])
 
                     # Handle matching SKUs
                     matched_skus = set()

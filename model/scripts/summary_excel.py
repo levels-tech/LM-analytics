@@ -307,10 +307,10 @@ class OrderSummary:
     
         df_lil = df_ordini_gioielli[(df_ordini_gioielli['Brand'] == 'Ordini LIL') 
                                     & (df_ordini_gioielli['CHECK'] != 'ESCLUSO')
-                                    & (df_ordini_gioielli['Total'] != 0)]
+                                    & (df_ordini_gioielli['Total'] > 0)]
         df_agee = df_ordini_gioielli[(df_ordini_gioielli['Brand'] == 'Ordini AGEE') 
                                      & (df_ordini_gioielli['CHECK'] != 'ESCLUSO')
-                                     & (df_ordini_gioielli['Total'] != 0)]
+                                     & (df_ordini_gioielli['Total'] > 0)]
 
         start_row = 3
         start_row = self.create_location_stats(df_lil, start_row, summary_sheet, 'LIL')

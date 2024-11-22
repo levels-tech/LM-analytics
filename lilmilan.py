@@ -35,7 +35,6 @@ def check_all_updates_saved(name_ordini, name_pagamenti = None):
     return all_updates_completed
 
 def get_nomi(df, nome_ordine):
-    st.write(nome_ordine)
     if nome_ordine in df["Name"].unique():
         return True, df[df["Name"] == nome_ordine]["Total"].values[0]
     else:
@@ -85,6 +84,10 @@ if 'pagamenti_columns' not in st.session_state:
     st.session_state.pagamenti_columns = None
 if 'sku_da_escludere' not in st.session_state:
     st.session_state.sku_da_escludere = exclude_skus
+if 'pagamenti_da_aggiungere_lil' not in st.session_state:
+    st.session_state.pagamenti_da_aggiungere_lil = {}
+if 'pagamenti_da_aggiungere_agee' not in st.session_state:
+    st.session_state.pagamenti_da_aggiungere_agee = {}
 
 # Title of the page
 st.title("Check Pagamenti LIL Milan e AGEE")
@@ -189,7 +192,6 @@ if proceed:
     if process_button:
         uploaded_ordini_files = {name: content["file"] for name, content in ordine_files.items() if content["file"] is not None and content["include"] is True}
         uploaded_other_files = {name: content["file"] for name, content in other_files.items() if content["file"] is not None and content["include"] is True}
-        print(uploaded_ordini_files)
         try:
             with st.spinner('Elaborazione dei file in corso...'):
                 # Check each uploaded and included order file
@@ -216,7 +218,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     df_rilevante = st.session_state.processed_data[(st.session_state.processed_data["CHECK"] != "ESCLUSO")].copy()
     df_rilevante_sorted = df_rilevante.sort_values(by=["CHECK", "Name"])
   
-    print(df_rilevante.Brand.value_counts())
     names_count_lil = len(df_rilevante[df_rilevante["Brand"] == "Ordini LIL"]["Name"].unique())
     names_count_agee = len(df_rilevante[df_rilevante["Brand"] == "Ordini AGEE"]["Name"].unique())
     names_count_pagamenti = len(st.session_state.pagamenti)
@@ -234,8 +235,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     name_ordini = np.concatenate([name_lil if len(name_lil) > 0 else np.array([]),
                                 name_agee if len(name_agee) > 0 else np.array([])
                                 ])
-    
-    pagamenti_da_aggiungere = {}
 
     pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] != "VERO")].copy()
 
@@ -259,12 +258,12 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                 name_df = lil_df[lil_df['Name'] == name]
                 check = name_df["CHECK"].values[0]
                 metodo = name_df["Payment Method"].values[0]
+                st.session_state.numeri_pagamenti = []
 
                 if check == "FALSO":
                     
                     if "Qromo" in metodo:# or "Satispay" in metodo:
                         st.write(f"Non è stato possibile determinare con certezza il pagamento corrispondente all'ordine {name}")
-                        # st.write(f"Scegliere tra i pagamenti dello stesso giorno senza corrispondenza quello o quelli da associare. Altrimenti mettere il Total dell'ordine pari a 0.")
 
                     else:
                         st.write(f"Il totale non coincide con l'importo effettivamente incassato. Modificare i valori delle colonne opportune.")
@@ -317,7 +316,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     base_warning = f"Attenzione: Payment Method va modificato, e va scelto un unico metodo di pagamento effettivamente usato"
                     st.warning(base_warning)
 
-                numeri_pagamenti = []
                 if "Qromo" in metodo:# or "Satispay" in metodo:
                     # Get possibili_pagamenti more cleanly
                     possibili_pagamenti = name_df['possibili_pagamenti'].iloc[0]
@@ -327,7 +325,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     filtered_rows = pagamenti[pagamenti['Numero Pagamento'].isin(possibili_pagamenti)]
                     
                     # Fix the condition using any() for Series comparison
-                    # st.write(filtered_rows)
                     satispay_mask = (filtered_rows["Metodo"] == "Satispay") & (filtered_rows["Numero Pagamento"] == "0")
                     qromo_mask = filtered_rows["Metodo"] == "Qromo"
                     filtered_rows = filtered_rows[satispay_mask | qromo_mask]
@@ -342,7 +339,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             if st.checkbox(f"{row['Importo Pagato']}€ pagati alle {row['Data']}", key=unique_key):
                                 selected_rows.append(row)
                                 importi_pagati.append(row["Importo Pagato"])
-                                numeri_pagamenti.append(row["Numero Pagamento"])
+                                st.session_state.numeri_pagamenti.append(row["Numero Pagamento"])
 
                                 st.session_state.metodo_pagamento = row["Metodo"]
                                 proceed = True
@@ -350,15 +347,14 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                         # Handle selected payments
                         if len(selected_rows) > 0:
                             # Check for already assigned payments
-                            for numero in numeri_pagamenti:
-                                matching_name = pagamenti_da_aggiungere.get(numero)
-
-                                # If a match is found, show a warning for the corresponding payment
-                                if matching_name:
-                                    st.warning(f"Il pagamento {numero} è già stato assegnato all'ordine {matching_name}")
+                            for numero in st.session_state.numeri_pagamenti:
+                                if numero in st.session_state.pagamenti_da_aggiungere_lil.keys():
+                                    matching_name = st.session_state.pagamenti_da_aggiungere_lil[numero]
+                                    if matching_name != name:
+                                        st.warning(f"Il pagamento {numero} è già stato assegnato all'ordine {matching_name}")
                                 else:
                                     # Assign the payment to pagamenti_da_aggiungere if it hasn't been assigned
-                                    pagamenti_da_aggiungere[numero] = name
+                                    st.session_state.pagamenti_da_aggiungere_lil[numero] = name
                             
                             # Display selected payments info
                             importo_pagato = sum(importi_pagati)
@@ -373,15 +369,15 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                         else:
                             st.write("Non hai selezionato alcun pagamento.")
                             st.write("Cambia il Total a 0.")
-                            importo_pagato = 0
+                            importo_pagato = 0.0
                             selected_rows.append(0)
                     else:
                         selected_rows = []
-                        numeri_pagamenti.append(name_df["Numero Pagamento"].values[0])
+                        st.session_state.numeri_pagamenti.append(name_df["Numero Pagamento"].values[0])
                         st.session_state.metodo_pagamento = None
                 else:
                     selected_rows = []
-                    numeri_pagamenti.append(name_df["Numero Pagamento"].values[0])
+                    st.session_state.numeri_pagamenti.append(name_df["Numero Pagamento"].values[0])
                     st.session_state.metodo_pagamento = None
 
                 # Dropdown to select which columns to edit (multi-select)
@@ -472,14 +468,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                     key=input_key
                                 )
                                 
-                                # # Check if required field is filled
-                                # if column in nan and not new_value:
-                                #     if check == "FALSO":
-                                #         all_required_fields_filled = False
-                                #         st.error(f"Il campo {column} è obbligatorio")
-                                #     elif check == "NON TROVATO":
-                                #         st.session_state[f'non_trovato{name}'] = True
-
 
                             elif column == "Payment Method":
                                 current_value = name_df[column].values[0]
@@ -505,23 +493,22 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                 
 
                             elif column == "Total":
+                                if len(selected_rows) == 0:
+                                    importo_pagato = float(name_df["Importo Pagato"].values[0])
                                 current_value = name_df[column].values[0]
                                 input_key = f"{column}_{name}_0"
                                 new_value = st.number_input(f"Valore attuale per {column}: {current_value}",
-                                    value=current_value if pd.notna(current_value) else 0,
+                                    value = importo_pagato if pd.notna(importo_pagato) else 0.0,
                                     step = None, 
                                     format="%.2f",  # Format to display the float with 2 decimal places
                                     key=input_key)
                                 
-                                # Check if the new total matches Importo Pagato
-                                if new_value:  # Only check if a value was entered
-                                    try:
-                                        # new_value = float(new_value)
-                                        if len(selected_rows) == 0:
-                                            importo_pagato = float(name_df["Importo Pagato"].values[0])
-                                    except ValueError:
-                                        st.error("Il valore inserito per Total non è un valido. Inserire un numero.")
-                                        all_required_fields_filled = False
+                                # # Check if the new total matches Importo Pagato
+                                # if new_value:  # Only check if a value was entered
+                                #     try:
+                                #     except ValueError:
+                                #         st.error("Il valore inserito per Total non è un valido. Inserire un numero.")
+                                #         all_required_fields_filled = False
                                     
                             else:
                                 # For other non-Lineitem columns
@@ -533,11 +520,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                     key=input_key
                                 )
                                 
-                                # if column in nan and not new_value:
-                                #     if check == "FALSO":
-                                        
-                                #     elif check == "NON TROVATO":
-                                #         st.session_state[f'non_trovato{name}'] = True
                             
                         # Apply the same value to all rows for non-Lineitem columns
                         for _, row in name_df.iterrows():
@@ -587,14 +569,10 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             new_total = float(new_values[list(new_values.keys())[0]]['values']['Total'])
                             if len(selected_rows) == 0:
                                 importo_pagato = float(name_df["Importo Pagato"].values[0])
-                            st.write(new_total, importo_pagato)
                             
-                            if new_total != importo_pagato:
-                                print("here!")
-                                # Store the state and values for later confirmation
+                            if new_total != importo_pagato:                                
                                 st.session_state[f'needs_confirmation_{name}'] = True
                                 st.session_state[f'new_values_{name}'] = new_values
-                                st.write(new_total, importo_pagato)
                             else:
                                 st.session_state[f'needs_confirmation_{name}'] = False
                                 # Totals match, proceed with update
@@ -619,9 +597,10 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                             if new_payment_method and "+" not in new_payment_method:
                                                 difference = original_total - new_total
                                                 st.session_state[f'needs_aggiungi_check_{name}'] = True
-                                                st.session_state[f'new_values_{name}'] = {
+                                                st.session_state[f'additional_values_add_{name}'] = {
                                                     'difference': difference,
-                                                    'payment_method': new_payment_method
+                                                    'numero': name_df["Numero Pagamento"].values[0],
+                                                    'old_payment_method': original_payment_method
                                                 }
 
                                 st.session_state[f'success_{name}'] = True
@@ -649,40 +628,95 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             st.session_state[f'success_{name}'] = True
 
                 if f'needs_aggiungi_check_{name}' in st.session_state and st.session_state[f'needs_aggiungi_check_{name}']:
-                    diff_values = st.session_state[f'new_values_{name}']['difference']
-                    new_payment_method = st.session_state[f'new_values_{name}']['payment_method']
-                    st.warning(f"Mancano {diff_values:.2f} euro per quest'ordine. Aggiungere una riga in cui {diff_values:.2f} euro sono stati pagati con un altro metodo di pagamento? Altrimenti saltare questo step e andare avanti.")
+                    diff_values = st.session_state[f'additional_values_add_{name}']['difference']
+                    old_payment_method = st.session_state[f'additional_values_add_{name}']['old_payment_method']
+                    numero_pagamento = st.session_state[f'additional_values_add_{name}']['numero']
+                    
+                    if "Cash" in old_payment_method:
+                        st.warning(f"Mancano {diff_values:.2f} euro per quest'ordine. Aggiungere una riga in cui {diff_values:.2f} euro sono stati pagati con Cash? Altrimenti saltare questo step e andare avanti.")
 
-                    with st.form(f"add_row_form_{name}"):
-                        available_payments = [p for p in payments if p != new_payment_method]
-                        additional_payment = st.selectbox(
-                            "Scegliere il metodo di pagamento per l'importo rimanente:",
-                            options=available_payments,
-                            key=f"additional_payment_{name}"
-                        )
-                        
-                        # Submit button after all other form elements
-                        confirm_submit = st.form_submit_button("Salvare le modifiche")
-                        
-                        if confirm_submit:
-                            new_result = add_row(st.session_state.processed_data, diff_values, additional_payment, name, last_index_lil)
-                            st.session_state.processed_data = new_result
-                            st.session_state.saved_updates.add(name)
-                            print(new_result.tail(5))
-                            last_index_lil += 1
+                        with st.form(f"add_row_cash_{name}"): 
+                            # Submit button after all other form elements
+                            confirm_submit = st.form_submit_button("Aggiungere")
+                            
+                            if confirm_submit:
+                                new_result = add_row(st.session_state.processed_data, [diff_values], ["Cash"], name, last_index_lil)
+                                st.session_state.processed_data = new_result
+                                st.session_state.saved_updates.add(name)
+                                last_index_lil += 1
 
-                            st.session_state[f'needs_aggiungi_check_{name}'] = False
-                            # st.success("Modifiche salvate con successo!")
-                            st.session_state[f'success_{name}'] = True
+                                st.session_state[f'needs_aggiungi_check_{name}'] = False
+                                st.session_state[f'success_{name}'] = True
+                    
+                    else:
+                        payments_used = list(map(str.strip, old_payment_method.split('+')))
+                        st.warning(f"Mancano {diff_values:.2f}€ per quest'ordine: aggiungere altri pagamenti? Scegliere tra i seguenti, altrimenti saltare questo step e andare avanti.")
+                        pagamenti_to_show = pagamenti[(pagamenti['CHECK'] != "VERO") 
+                                                      & (pagamenti["Importo Pagato"] <= diff_values) 
+                                                      & (pagamenti["Metodo"].isin(payments_used))
+                                                      & (pagamenti["Numero Pagamento"] != numero_pagamento)]
+                        pagamenti_to_show = pagamenti_to_show.sort_values(by = "Importo Pagato", ascending = False)
 
+                        if not pagamenti_to_show.empty:
+                            st.write("Selezionare uno o più pagamenti corrispondenti all'ordine:")
+                            selected_rows = []
+                            importi_pagati = []
+                            metodi = []
+
+                            for index, row in pagamenti_to_show.iterrows():
+                                unique_key = f"add_pagamenti_{name}_{index}"
+                                if st.checkbox(f"{row['Importo Pagato']}€ pagati alle {row['Data']} con {row["Metodo"]}", key=unique_key):
+                                    selected_rows.append(row)
+                                    importi_pagati.append(row["Importo Pagato"])
+                                    st.session_state.numeri_pagamenti.append(row["Numero Pagamento"])
+                                    if row["Metodo"] not in metodi:
+                                        metodi.append(row["Metodo"]) 
+
+                                    st.session_state.metodo_pagamento = metodi
+                                    proceed = True
+
+                            # Handle selected payments
+                            if len(selected_rows) > 0:
+                                # Check for already assigned payments
+                                for numero in st.session_state.numeri_pagamenti:                                    
+                                    if numero not in st.session_state.pagamenti_da_aggiungere_lil.keys():
+                                        st.session_state.pagamenti_da_aggiungere_lil[numero] = name
+                                    else:
+                                        matching_name = st.session_state.pagamenti_da_aggiungere_lil[numero]
+                                        if matching_name != name:
+                                            st.warning(f"Il pagamento {numero} è già stato assegnato all'ordine {matching_name}")
+
+                                # Display selected payments info
+                                importo_pagato = sum(importi_pagati)
+                                st.write("Hai selezionato:")
+                                selected_df = pd.DataFrame(selected_rows)
+                                st.write(selected_df[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]])
+
+                                with st.form(f"add_row_other_{name}"): 
+                                    # Submit button after all other form elements
+                                    confirm_submit = st.form_submit_button("Aggiungere")
+                                    
+                                    if confirm_submit:
+                                        new_result = add_row(st.session_state.processed_data, importi_pagati, st.session_state.metodo_pagamento, name, last_index_lil)
+                                        st.session_state.processed_data = new_result
+                                        st.session_state.saved_updates.add(name)
+                                        last_index_lil += 1
+
+                                        st.session_state[f'needs_aggiungi_check_{name}'] = False
+                                        st.session_state[f'success_{name}'] = True
+
+                                        st.session_state.metodo_pagamento = None
+                                        selected_rows = []
+                    
+                    ##############################################################################
 
                 # Show success message if it's in the session state
                 if f'success_{name}' in st.session_state and st.session_state[f'success_{name}']:
                     st.success("Modifiche salvate con successo!")
                     modified_count += 1
-                    for n in numeri_pagamenti:
-                        if n not in pagamenti_da_aggiungere.keys():
-                            pagamenti_da_aggiungere[n] = name
+                    for n in st.session_state.numeri_pagamenti:
+                        if n not in st.session_state.pagamenti_da_aggiungere_lil.keys():
+                            st.session_state.pagamenti_da_aggiungere_lil[n] = name
                     
     else:
         st.subheader("Nessun ordine di LIL Milan deve essere controllato")
@@ -706,20 +740,33 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                 name_df = agee_df[agee_df['Name'] == name]
                 check = name_df["CHECK"].values[0]
                 metodo = name_df["Payment Method"].values[0]
+                st.session_state.numeri_pagamenti = []
 
                 if check == "FALSO":
                     
-                    if "Qromo" in metodo or "Satispay" in metodo:
+                    if "Qromo" in metodo: # or "Satispay" in metodo:
                         st.write(f"Non è stato possibile determinare con certezza il pagamento corrispondente all'ordine {name}")
-                        # st.write(f"Scegliere tra i pagamenti dello stesso giorno senza corrispondenza quello o quelli da associare. Altrimenti mettere il Total dell'ordine pari a 0.")
 
                     else:
                         st.write(f"Il totale non coincide con l'importo effettivamente incassato. Modificare i valori delle colonne opportune.")
+                        
+                        if name_df["Shipping Country"].values[0] == "GB":
+                            st.write("Verificare se la Location è LIL House London")
+                        
                         st.write(f"Importo effettivamente incassato: **{name_df['Importo Pagato'].values[0]}**")
+
                 
                 elif check == "NON TROVATO":
                     st.write(f"Non è stato trovato un pagamento relativo all'ordine. Modificare i valori delle colonne opportune.")
+
+                    if name_df["Shipping Country"].values[0] == "GB":
+                            st.write("Verificare se la Location è LIL House London")
+                            
                     st.write(f"Importo effettivamente incassato: **0**")
+
+                elif check == "LONDON":
+                    st.write(f"Il total è corretto, verificare se l'ordine è di LIL House London.")
+                    st.write(f"Location attuale: **{name_df['Location'].values[0]}**")
 
                 st.dataframe(name_df[colonne], use_container_width=True)
 
@@ -751,8 +798,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     base_warning = f"Attenzione: Payment Method va modificato, e va scelto un unico metodo di pagamento effettivamente usato"
                     st.warning(base_warning)
 
-                numeri_pagamenti = []
-                if "Qromo" in metodo or "Satispay" in metodo:
+                if "Qromo" in metodo:# or "Satispay" in metodo:
                     # Get possibili_pagamenti more cleanly
                     possibili_pagamenti = name_df['possibili_pagamenti'].iloc[0]
                     possibili_pagamenti = [] if possibili_pagamenti is None or (isinstance(possibili_pagamenti, float) and np.isnan(possibili_pagamenti)) else possibili_pagamenti
@@ -761,7 +807,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     filtered_rows = pagamenti[pagamenti['Numero Pagamento'].isin(possibili_pagamenti)]
                     
                     # Fix the condition using any() for Series comparison
-                    # st.write(filtered_rows)
                     satispay_mask = (filtered_rows["Metodo"] == "Satispay") & (filtered_rows["Numero Pagamento"] == "0")
                     qromo_mask = filtered_rows["Metodo"] == "Qromo"
                     filtered_rows = filtered_rows[satispay_mask | qromo_mask]
@@ -776,7 +821,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             if st.checkbox(f"{row['Importo Pagato']}€ pagati alle {row['Data']}", key=unique_key):
                                 selected_rows.append(row)
                                 importi_pagati.append(row["Importo Pagato"])
-                                numeri_pagamenti.append(row["Numero Pagamento"])
+                                st.session_state.numeri_pagamenti.append(row["Numero Pagamento"])
 
                                 st.session_state.metodo_pagamento = row["Metodo"]
                                 proceed = True
@@ -784,15 +829,14 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                         # Handle selected payments
                         if len(selected_rows) > 0:
                             # Check for already assigned payments
-                            for numero in numeri_pagamenti:
-                                matching_name = pagamenti_da_aggiungere.get(numero)
-
-                                # If a match is found, show a warning for the corresponding payment
-                                if matching_name:
-                                    st.warning(f"Il pagamento {numero} è già stato assegnato all'ordine {matching_name}")
+                            for numero in st.session_state.numeri_pagamenti:
+                                if numero in st.session_state.pagamenti_da_aggiungere_agee.keys():
+                                    matching_name = st.session_state.pagamenti_da_aggiungere_agee[numero]
+                                    if matching_name != name:
+                                        st.warning(f"Il pagamento {numero} è già stato assegnato all'ordine {matching_name}")
                                 else:
                                     # Assign the payment to pagamenti_da_aggiungere if it hasn't been assigned
-                                    pagamenti_da_aggiungere[numero] = name
+                                    st.session_state.pagamenti_da_aggiungere_agee[numero] = name
                             
                             # Display selected payments info
                             importo_pagato = sum(importi_pagati)
@@ -807,14 +851,16 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                         else:
                             st.write("Non hai selezionato alcun pagamento.")
                             st.write("Cambia il Total a 0.")
-                            importo_pagato = 0
+                            importo_pagato = 0.0
                             selected_rows.append(0)
                     else:
                         selected_rows = []
-                        numeri_pagamenti.append(name_df["Numero Pagamento"].values[0])
+                        st.session_state.numeri_pagamenti.append(name_df["Numero Pagamento"].values[0])
+                        st.session_state.metodo_pagamento = None
                 else:
                     selected_rows = []
-                    numeri_pagamenti.append(name_df["Numero Pagamento"].values[0])
+                    st.session_state.numeri_pagamenti.append(name_df["Numero Pagamento"].values[0])
+                    st.session_state.metodo_pagamento = None
 
                 # Dropdown to select which columns to edit (multi-select)
                 columns_to_edit = st.multiselect("Selezionare le colonne da modificare:", colonne, key=f"multiselect_{name}")
@@ -848,7 +894,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                         }
                                     new_values[row.original_index]['values'][column] = new_value
 
-
                             elif column == "Lineitem price":
                                 for idx, row in name_df.iterrows():
                                     current_value = row[column]
@@ -864,7 +909,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                         }
                                     new_values[row.original_index]['values'][column] = new_value
 
-
                             elif column == "Lineitem name": 
                                 for idx, row in name_df.iterrows():
                                     current_value = row[column]
@@ -878,7 +922,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                             'values': {},
                                         }
                                     new_values[row.original_index]['values'][column] = new_value
-
                 
                             else: 
                                 for idx, row in name_df.iterrows():
@@ -893,7 +936,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                             'values': {},
                                         }
                                     new_values[row.original_index]['values'][column] = new_value
-                        
+
                         else:
                             # Special handling for Location field
                             if column == "Location":
@@ -901,9 +944,9 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                 input_key = f"{column}_{name}_0"
                                 new_value = st.selectbox(
                                     f"Selezionare {column}:",
-                                    options=["Firgun House", "LIL House"],
+                                    options=["Firgun House", "LIL House London", "LIL House"],
                                     index=0 if pd.isna(current_value) else 
-                                        ["Firgun House", "LIL House"].index(current_value),
+                                        ["Firgun House", "LIL House London", "LIL House"].index(current_value),
                                     key=input_key
                                 )
                                 
@@ -932,23 +975,22 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                 
 
                             elif column == "Total":
+                                if len(selected_rows) == 0:
+                                    importo_pagato = float(name_df["Importo Pagato"].values[0])
                                 current_value = name_df[column].values[0]
                                 input_key = f"{column}_{name}_0"
                                 new_value = st.number_input(f"Valore attuale per {column}: {current_value}",
-                                    value=current_value if pd.notna(current_value) else 0,
+                                    value = importo_pagato if pd.notna(importo_pagato) else 0.0,
                                     step = None, 
                                     format="%.2f",  # Format to display the float with 2 decimal places
                                     key=input_key)
-                                # Check if the new total matches Importo Pagato
-                                if new_value: 
-                                    st.write(new_value, current_value) # Only check if a value was entered
-                                    try:
-                                        # new_value = float(new_value)
-                                        if len(selected_rows) == 0:
-                                            importo_pagato = float(name_df["Importo Pagato"].values[0])
-                                    except ValueError:
-                                        st.error("Il valore inserito per Total non è un valido. Inserire un numero.")
-                                        all_required_fields_filled = False
+                                
+                                # # Check if the new total matches Importo Pagato
+                                # if new_value:  # Only check if a value was entered
+                                #     try:
+                                #     except ValueError:
+                                #         st.error("Il valore inserito per Total non è un valido. Inserire un numero.")
+                                #         all_required_fields_filled = False
                                     
                             else:
                                 # For other non-Lineitem columns
@@ -960,11 +1002,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                     key=input_key
                                 )
                                 
-                                # if column in nan and not new_value:
-                                #     if check == "FALSO":
-                                        
-                                #     elif check == "NON TROVATO":
-                                #         st.session_state[f'non_trovato{name}'] = True
                             
                         # Apply the same value to all rows for non-Lineitem columns
                         for _, row in name_df.iterrows():
@@ -1014,14 +1051,11 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             new_total = float(new_values[list(new_values.keys())[0]]['values']['Total'])
                             if len(selected_rows) == 0:
                                 importo_pagato = float(name_df["Importo Pagato"].values[0])
-                            st.write(new_total, importo_pagato)
-                            
+
                             if new_total != importo_pagato:
-                                print("here!")
                                 # Store the state and values for later confirmation
                                 st.session_state[f'needs_confirmation_{name}'] = True
                                 st.session_state[f'new_values_{name}'] = new_values
-                                st.write(new_total, importo_pagato)
                             else:
                                 st.session_state[f'needs_confirmation_{name}'] = False
                                 # Totals match, proceed with update
@@ -1046,9 +1080,10 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                             if new_payment_method and "+" not in new_payment_method:
                                                 difference = original_total - new_total
                                                 st.session_state[f'needs_aggiungi_check_{name}'] = True
-                                                st.session_state[f'new_values_{name}'] = {
+                                                st.session_state[f'additional_values_add_{name}'] = {
                                                     'difference': difference,
-                                                    'payment_method': new_payment_method
+                                                    'numero': name_df["Numero Pagamento"].values[0],
+                                                    'old_payment_method': original_payment_method
                                                 }
 
                                 st.session_state[f'success_{name}'] = True
@@ -1076,65 +1111,115 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             st.session_state[f'success_{name}'] = True
 
                 if f'needs_aggiungi_check_{name}' in st.session_state and st.session_state[f'needs_aggiungi_check_{name}']:
-                    diff_values = st.session_state[f'new_values_{name}']['difference']
-                    new_payment_method = st.session_state[f'new_values_{name}']['payment_method']
-                    st.warning(f"Mancano {diff_values:.2f} euro per quest'ordine. Aggiungere una riga in cui {diff_values:.2f} euro sono stati pagati con un altro metodo di pagamento? Altrimenti saltare questo step e andare avanti.")
+                    diff_values = st.session_state[f'additional_values_add_{name}']['difference']
+                    old_payment_method = st.session_state[f'additional_values_add_{name}']['old_payment_method']
+                    numero_pagamento = st.session_state[f'additional_values_add_{name}']['numero']
+                    
+                    if "Cash" in old_payment_method:
+                        st.warning(f"Mancano {diff_values:.2f} euro per quest'ordine. Aggiungere una riga in cui {diff_values:.2f} euro sono stati pagati con Cash? Altrimenti saltare questo step e andare avanti.")
 
-                    with st.form(f"add_row_form_{name}"):
-                        available_payments = [p for p in payments if p != new_payment_method]
-                        additional_payment = st.selectbox(
-                            "Scegliere il metodo di pagamento per l'importo rimanente:",
-                            options=available_payments,
-                            key=f"additional_payment_{name}"
-                        )
-                        
-                        # Submit button after all other form elements
-                        confirm_submit = st.form_submit_button("Salvare le modifiche", key = "salvare_modifiche_add")
-                        
-                        if confirm_submit:
-                            new_result = add_row(st.session_state.processed_data, diff_values, additional_payment, name, last_index_agee)
-                            st.session_state.processed_data = new_result
-                            st.session_state.saved_updates.add(name)
-                            print(new_result.tail(5))
-                            last_index_agee += 1
+                        with st.form(f"add_row_cash_{name}"): 
+                            # Submit button after all other form elements
+                            confirm_submit = st.form_submit_button("Aggiungere")
+                            
+                            if confirm_submit:
+                                new_result = add_row(st.session_state.processed_data, [diff_values], ["Cash"], name, last_index_lil)
+                                st.session_state.processed_data = new_result
+                                st.session_state.saved_updates.add(name)
+                                last_index_lil += 1
 
-                            st.session_state[f'needs_aggiungi_check_{name}'] = False
-                            # st.success("Modifiche salvate con successo!")
-                            st.session_state[f'success_{name}'] = True
+                                st.session_state[f'needs_aggiungi_check_{name}'] = False
+                                st.session_state[f'success_{name}'] = True
+                    
+                    else:
+                        payments_used = list(map(str.strip, old_payment_method.split('+')))
+                        st.warning(f"Mancano {diff_values:.2f}€ per quest'ordine: aggiungere altri pagamenti? Scegliere tra i seguenti, altrimenti saltare questo step e andare avanti.")
+                        pagamenti_to_show = pagamenti[(pagamenti['CHECK'] != "VERO") 
+                                                      & (pagamenti["Importo Pagato"] <= diff_values) 
+                                                      & (pagamenti["Metodo"].isin(payments_used))
+                                                      & (pagamenti["Numero Pagamento"] != numero_pagamento)]
+                        pagamenti_to_show = pagamenti_to_show.sort_values(by = "Importo Pagato", ascending = False)
 
+                        if not pagamenti_to_show.empty:
+                            st.write("Selezionare uno o più pagamenti corrispondenti all'ordine:")
+                            selected_rows = []
+                            importi_pagati = []
+                            metodi = []
+
+                            for index, row in pagamenti_to_show.iterrows():
+                                unique_key = f"add_pagamenti_{name}_{index}"
+                                if st.checkbox(f"{row['Importo Pagato']}€ pagati alle {row['Data']} con {row["Metodo"]}", key=unique_key):
+                                    selected_rows.append(row)
+                                    importi_pagati.append(row["Importo Pagato"])
+                                    st.session_state.numeri_pagamenti.append(row["Numero Pagamento"])
+                                    if row["Metodo"] not in metodi:
+                                        metodi.append(row["Metodo"]) 
+
+                                    st.session_state.metodo_pagamento = metodi
+                                    proceed = True
+
+                            # Handle selected payments
+                            if len(selected_rows) > 0:
+                                # Check for already assigned payments
+                                for numero in st.session_state.numeri_pagamenti:
+                                    if numero not in st.session_state.pagamenti_da_aggiungere_agee.keys():
+                                        st.session_state.pagamenti_da_aggiungere_agee[numero] = name
+                                    else:
+                                        matching_name = st.session_state.pagamenti_da_aggiungere_agee[numero]
+                                        if matching_name != name:
+                                            st.warning(f"Il pagamento {numero} è già stato assegnato all'ordine {matching_name}")
+                                
+                                # Display selected payments info
+                                importo_pagato = sum(importi_pagati)
+                                st.write("Hai selezionato:")
+                                selected_df = pd.DataFrame(selected_rows)
+                                st.write(selected_df[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]])
+
+                                with st.form(f"add_row_other_{name}"): 
+                                    # Submit button after all other form elements
+                                    confirm_submit = st.form_submit_button("Aggiungere")
+                                    
+                                    if confirm_submit:
+                                        new_result = add_row(st.session_state.processed_data, importi_pagati, st.session_state.metodo_pagamento, name, last_index_agee)
+                                        st.session_state.processed_data = new_result
+                                        st.session_state.saved_updates.add(name)
+                                        last_index_agee += 1
+
+                                        st.session_state[f'needs_aggiungi_check_{name}'] = False
+                                        st.session_state[f'success_{name}'] = True
+
+                                        st.session_state.metodo_pagamento = None
+                                        selected_rows = []
+                    
+                    ##############################################################################
 
                 # Show success message if it's in the session state
                 if f'success_{name}' in st.session_state and st.session_state[f'success_{name}']:
                     st.success("Modifiche salvate con successo!")
                     modified_count += 1
-                    for n in numeri_pagamenti:
-                        if n not in pagamenti_da_aggiungere.keys():
-                            pagamenti_da_aggiungere[n] = name
+                    for n in st.session_state.numeri_pagamenti:
+                        if n not in st.session_state.pagamenti_da_aggiungere_agee.keys():
+                            st.session_state.pagamenti_da_aggiungere_agee[n] = name
+                            
     else:
         st.subheader("Nessun ordine di AGEE deve essere controllato")
 
 
 ################### pagamenti
 
-    # ordini_finiti = st.button("Ordini Finiti", key = "ordini_finiti")
-    st.write(modified_count, len(lil_df.Name.unique()) + len(agee_df.Name.unique()))
     can_proceed = modified_count == len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
-    # can_proceed = modified_count >= 0 
+    # can_proceed = modified_count >= 2 
 
     if can_proceed:
-
-        st.write(pagamenti_da_aggiungere)
 
         colonne_essenziali_pagamenti =  ['Name', 'Paid at', 'Lineitem quantity', 'Lineitem sku', "Shipping Country", 'Location', "Brand"]  
         
         # order_changes_complete = check_all_updates_saved(name_ordini, pag = False)
         # #Excel generation part
         # if order_changes_complete:
-        pagamenti = aggiungi_pagamenti(st.session_state.pagamenti, pagamenti_da_aggiungere)
+        pagamenti = aggiungi_pagamenti(st.session_state.pagamenti, st.session_state.pagamenti_da_aggiungere_lil, st.session_state.pagamenti_da_aggiungere_agee)
         st.session_state.pagamenti = pagamenti
-        print("BONIFICO URGENTE 6", len(st.session_state.pagamenti[st.session_state.pagamenti["Metodo"] == "Bonifico"]))
-        print(st.session_state.pagamenti[st.session_state.pagamenti["Metodo"] == "Bonifico"])
-            
+
         p =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] == "NON TROVATO")].copy()
         # pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] == "NON TROVATO")].copy()
         # pagamenti = pagamenti.drop_duplicates(subset=colonne)
@@ -1193,13 +1278,10 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     
                     if include_choice == "Si":
                         new_values = [None, None, None, None, None, None, None, None, None, None]  # Initialize list to hold order number, date, quantities, sku, country and location
-                        # st.write("Inserire le seguqenti informazioni")# per ognuna di queste colonne: **{', '.join(colonne_essenziali_pagamenti)}**")
-                                                                
                         st.write("Inserire le seguenti informazioni")
 
                         #Name
                         if metodo == "Shopify Payments":
-                            # order_num = row["Numero Pagamento"].replace("#", "").strip()
                             order_num = row["Numero Pagamento"]
                         else:
                             order = st.text_input("Inserire il numero di ordine relativo al pagamento (senza #)",
@@ -1356,9 +1438,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                 all_required_fields_filled = False
 
                             nome_usato, totale_usato = get_nomi(st.session_state.processed_data, order_num)
-                            # st.write(nome_usato, totale_usato)
-                            # lista = sorted(st.session_state.processed_data["Name"].dropna().unique())
-                            # st.write(lista)
 
                             if nome_usato:
                                 st.session_state[f'ordine_esistente_tutto_totale_{idx}'] = True
@@ -1416,10 +1495,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     # #Excel generation part
     # if all_changes_complete:
     #     st.markdown("---")
-
-    st.write(len(st.session_state.processed_data), len(st.session_state.pagamenti))
-    print("BONIFICO URGENTE 6", len(st.session_state.pagamenti[st.session_state.pagamenti["Metodo"] == "Bonifico"]))
-    print(st.session_state.pagamenti[st.session_state.pagamenti["Metodo"] == "Bonifico"])
         
     excel_filename = st.text_input("Inserire il nome da dare al file Excel (senza .xlsx):", value="output_file")
     
