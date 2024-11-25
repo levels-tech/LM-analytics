@@ -80,12 +80,10 @@ class SatispayMatcher(PaymentMatcher):
         df_check3.loc[(df_check3["Total"] == df_check3["Importo Pagato"]), "CHECK"] = "VERO"
         df_check3.loc[(~df_check3["payment_uid"].isna()) & (df_check3["Total"] != df_check3["Importo Pagato"]), "CHECK"] = "FALSO"
         df_check3.loc[(df_check3["payment_uid"].isna()), "CHECK"] = "NON TROVATO"
-        print(df_check3[df_check3["Name"] == "#42526"][["Total", "Importo Pagato", "Payment Method"]], "satispay 1")
 
         # Identify the names that are in df_ordini_solo but not in df_step1
         missing_names = set(df_ordini_suggestions.Name.unique()) - set(df_check3.Name.unique())
         missing_num = set(df_mix["payment_uid"].unique()) - set(df_check3["payment_uid"].unique())
-        # print(df_mix[df_mix["Name"] == "#42526"]["Payment Method"], "satispay 2")
 
         # Filter df_ordini_suggestions to include only the rows with missing names
         missing_rows_step3 = df_ordini_suggestions[df_ordini_suggestions["Name"].isin(missing_names)]
@@ -93,33 +91,15 @@ class SatispayMatcher(PaymentMatcher):
 
         df_final_check = pd.concat([df_check2, df_check3, missing_rows_step3, missing_rows_num])
         df_final_check.loc[(df_final_check["Total"] == df_final_check["Importo Pagato"]), "Payment Method"] = "Satispay"
-        print(df_final_check[df_final_check["Name"] == "#42526"][["Total", "Importo Pagato", "Payment Method"]], "satispay 3")
 
         df_final_check = self.apply_checks(df_final_check)
         df_final_check = df_final_check[(df_final_check["CHECK"] == "VERO") | (~df_final_check["Numero Pagamento"].isna())]
-        print(df_final_check[df_final_check["Name"] == "#42526"]["Payment Method"], "satispay 4")
 
         # Drop the unwanted columns in both DataFrames before concatenation
         df_check_online = df_check_online.drop(columns=["partial_date", "Matched Reference"], errors='ignore')
         df_final_check = df_final_check.drop(columns=["partial_date", "Time_difference"], errors='ignore')
 
         df_check = pd.concat([df_check_online, df_final_check])
-        print(df_check[["Importo Pagato", "Data"]])
-        print(df_check[df_check["Name"] == "#42526"]["Payment Method"], "satispay 5")
-
-        #vedi se ci sono altri match
-        # altri_nomi_vero = df_final_check[df_final_check["CHECK"] == "VERO"]["Name"].unique()
-        # altri_pagamenti_vero = df_final_check[df_final_check["CHECK"] == "VERO"]["Numero Pagamento"].unique()
-
-        # #mergiare la lisa dei possibili pagamenti con gli ordini
-        # numero_pagamento_lists = df_final_check.groupby('Name')['Numero Pagamento'].agg(list).reset_index()
-        # numero_pagamento_lists = numero_pagamento_lists.rename(columns={'Numero Pagamento': 'possibili_pagamenti'})
-        # df_ordini = pd.merge(df_ordini, numero_pagamento_lists, on='Name', how='left')
-
-        # #aggiornare CHECK
-        # df_ordini['possibili_pagamenti'] = df_ordini['possibili_pagamenti'].apply(lambda x: np.nan if isinstance(x, list) and all(pd.isna(i) for i in x) else x)
-        # df_ordini.loc[df_ordini['possibili_pagamenti'].apply(lambda x: isinstance(x, list) and len(x) > 0), 'CHECK'] = 'FALSO'
-        # df_ordini.loc[(df_ordini['possibili_pagamenti'].isna()) & (df_ordini["CHECK"] == "FALSO"), 'CHECK'] = 'NON TROVATO'
 
         # Create a mask for rows that contain '+' in the 'Payment Method', exclude 'Gift Card', and have 'CHECK' set to 'VERO'  
         mask = (df_check["Payment Method"].str.contains(r'\+') &
@@ -131,7 +111,6 @@ class SatispayMatcher(PaymentMatcher):
         df_full = df_full.drop_duplicates(subset=columns)
         df_full["CHECK"] = df_full["CHECK"].fillna("NON TROVATO")
         df_full["Metodo"] = "Satispay"
-        print(df_check[df_check["Name"] == "#42526"]["Payment Method"], "satispay 6")
-
+        
         return df_check, df_full, columns
     

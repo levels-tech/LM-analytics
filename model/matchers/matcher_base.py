@@ -24,12 +24,10 @@ class PaymentMatcher:
                         "Shopify AGEE": "Transaction Date",
                         "Shopify LIL": "Transaction Date"}
 
-        expected_date = f"{anno}-{str(mese).zfill(2)}"
+        expected_date = f"{anno}-{mese:02d}"  # "2024-10" #f"{anno}-{str(mese).zfill(2)}"
         f_file = self.uploaded_files.get(name, {}).get("file")
         
-        if f_file: 
-            print(name)
-            print()
+        if f_file:
             if name == "Bonifici":
                 excel_file = io.BytesIO(f_file.getvalue())
                 f = find_header_row(excel_file, "Importo")
@@ -47,6 +45,7 @@ class PaymentMatcher:
 
         else:
             f_filtered = pd.DataFrame()
+            columns = []
            
         return f_filtered, columns
     
@@ -282,10 +281,8 @@ class PaymentMatcher:
 
         if bonifico == True:
             df_check = self.choose_merges(df_check)
-            print("BONIFICO URGENTE 1", df_check[["Name", "Total", "CHECK", "Numero Pagamento", "Time_difference"]])
 
         df_check["CHECK"] = df_check.apply(lambda row: self.check_values(row), axis=1)
-        print(df_check["CHECK"].value_counts())
         df_check = self.check_cents_diff(df_check)     
         
         if double_payments == True:

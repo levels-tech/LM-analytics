@@ -48,15 +48,13 @@ class OrderSummary:
             df_columns = list(st.session_state.df_columns)
             df_columns.insert(paid_at_pos + 1, 'Data Giorno')
 
-            print("colonne", df_columns)
             pagamenti_columns = st.session_state.pagamenti_columns
             for metodo, columns in pagamenti_columns.items():
                 pagamenti_columns[metodo] = list(columns)
-                pagamenti_columns[metodo].append("CHECK")
+                # pagamenti_columns[metodo].append("CHECK")
 
             # Apply the function to each 'Name' group
             self.df_ordini_all = self.df_ordini_all.groupby('Name', group_keys=False).apply(self.process_group)
-            print("lil 1", self.df_ordini_all[self.df_ordini_all["Name"] == "#11111"])
 
             # First write the basic DataFrames
             with pd.ExcelWriter(self.filename, engine='openpyxl', mode='a') as writer:
@@ -70,7 +68,6 @@ class OrderSummary:
                     lil.insert(paid_at_index + 1, "Data Giorno", lil["Paid at"].apply(self.reformat_date))
                     # lil = lil[lil.columns[: lil.columns.get_loc('Brand') + 1]]
                     lil = lil[df_columns]
-                    print("lil 2", lil[lil["Name"] == "#11111"])
 
                     # Write to Excel
                     lil.to_excel(writer, sheet_name='Ordini LIL', index=False)
@@ -88,8 +85,6 @@ class OrderSummary:
 
                 # Write payment sheets
                 mask_lil_p = self.pagamenti["Brand"] == "Ordini LIL"
-                print("BONIFICO URGENTE 8", len(self.pagamenti[mask_lil_p][self.pagamenti[mask_lil_p]["Metodo"] == "Bonifico"]))
-                print(self.pagamenti[mask_lil_p][self.pagamenti[mask_lil_p]["Metodo"] == "Bonifico"])
                 mask_agee_p = self.pagamenti["Brand"] == "Ordini AGEE"
 
                 if mask_lil_p.any():
@@ -290,7 +285,7 @@ class OrderSummary:
             cell.font = bold_font
 
         exclude_strings = ["Luxury Pack", "Engraving", "E-Gift", "Repair", "Whatever Tote", "Piercing Party", "LIL Bag"]
-        exclude_skus = st.session_state.sku_da_escludere
+        # exclude_skus = st.session_state.sku_da_escludere
 
         # dic_to_esclude = {
         #     "Luxury Pack": ["15790000687"], 
@@ -302,8 +297,8 @@ class OrderSummary:
         #     "LIL Bag": ["15790000687", "15790000689"]
         # }
 
-        df_ordini_gioielli = self.df_ordini_all[~self.df_ordini_all['Lineitem name'].str.contains('|'.join(exclude_strings), case=False, na=False) |
-                                                ~self.df_ordini_all['Lineitem sku'].isin(exclude_skus)]
+        df_ordini_gioielli = self.df_ordini_all[~self.df_ordini_all['Lineitem name'].str.contains('|'.join(exclude_strings), case=False, na=False)] #|
+                                                # ~self.df_ordini_all['Lineitem sku'].isin(exclude_skus)]
     
         df_lil = df_ordini_gioielli[(df_ordini_gioielli['Brand'] == 'Ordini LIL') 
                                     & (df_ordini_gioielli['CHECK'] != 'ESCLUSO')

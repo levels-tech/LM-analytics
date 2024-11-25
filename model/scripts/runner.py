@@ -60,7 +60,6 @@ class MatcherRunner:
         self.df_ordini_all["index_df"] = self.df_ordini_all.index
         pag["index_pag"] = pag.index
         merged = pd.merge(self.df_ordini_all[mask], pag[pag["CHECK"] == "NON TROVATO"], left_on=["Total", "giorno"], right_on = ["Importo Pagato", "giorno"], how = "inner")
-        print(merged.columns)
         
         if len(merged) > 0:
             for _, row in merged.iterrows():
@@ -114,8 +113,6 @@ class MatcherRunner:
         # Mask for rows where SHipping Country is GB
         mask = (self.df_ordini_all["Shipping Country"] == "GB") & (self.df_ordini_all["Location"] != "LIL House London") & (self.df_ordini_all["CHECK"] == "VERO")
         
-        print("GB", self.df_ordini_all.loc[mask][["Name", "CHECK", "Location"]])
-
         # Update the "CHECK" column to "LONDON" where the condition is true
         self.df_ordini_all.loc[mask, "CHECK"] = "LONDON"
 
@@ -163,19 +160,10 @@ class MatcherRunner:
 
             # Select columns from each DataFrame in all_dfs before concatenating
             df_pagamenti = pd.concat([df for df in all_dfs], ignore_index=True)
-            # print("BONIFICO URGENTE 2", len(df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"]))
-            print("BONIFICO isa 2", df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"][["Importo", "CHECK", "Brand"]]) 
             self.df_ordini_all, df_pagamenti = check_partially_refunded(self.df_ordini_all, df_pagamenti)
-            # print("BONIFICO URGENTE 3", len(df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"]))
-            print("BONIFICO isa 3", df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"][["Importo", "CHECK", "Brand"]]) 
 
             self.df_ordini_all, df_pagamenti = self.handle_pagamenti_altri(df_pagamenti)
-            # print("BONIFICO URGENTE 4", len(df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"]))
-            print("BONIFICO isa 4", df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"][["Importo", "CHECK", "Brand"]]) 
             self.df_ordini_all, df_pagamenti = self.handle_pagamenti_methods_diversi(df_pagamenti)
-            # print("BONIFICO URGENTE 5", len(df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"]))
-            print("BONIFICO isa 5", df_pagamenti[df_pagamenti["Metodo"] == "Bonifico"][["Importo", "CHECK", "Brand"]]) 
-
 
             self.df_ordini_all = self.possibili_pagamenti()
 
@@ -183,9 +171,6 @@ class MatcherRunner:
 
             self.df_ordini_all = self.df_ordini_all.sort_values('CHECK', key=lambda x: x.map({'VERO': 0, 'FALSO': 1, 'NON TROVATO': 2}))
             self.df_ordini_all = self.df_ordini_all.drop_duplicates(subset=subset_columns, keep='first')
-
-            print("ORDINI ALL", self.df_ordini_all.CHECK.value_counts())
-            print("PAGAMENTI", df_pagamenti.CHECK.value_counts())
 
             self.df_ordini_all = self.handle_nan()
             self.df_ordini_all = self.handle_london()

@@ -28,7 +28,7 @@ def check_files(file, name, mese, anno):
                    "Shopify AGEE": "Transaction Date",
                    "Shopify LIL": "Transaction Date"}
 
-    expected_date = f"{anno}-{str(mese).zfill(2)}"
+    expected_date = f"{anno}-{mese:02d}"  #f"{anno}-{str(mese).zfill(2)}"
     f_file = file.get(name, {}).get("file")
     
     if f_file: 
@@ -40,12 +40,20 @@ def check_files(file, name, mese, anno):
         f[date_column[name]] = f[date_column[name]].apply(reformat_date)
         f_filtered = f[f[date_column[name]].str[:7] == expected_date].copy()
         if len(f_filtered) == 0:
-            found_dates = sorted(f[date_column[name]].str[:7].unique())
-            raise DateMismatchError(
-                message=f"Nel file di {name} non sono stati trovati dati per il periodo {expected_date}",
-                details=(f"Date disponibili nel file: {', '.join(found_dates)}\n"
-                        "Selezionare un periodo presente nel file o caricare un file del periodo corretto."))
-        return True
+            try:
+                found_dates = sorted(f[date_column[name]].str[:7].unique())
+                raise DateMismatchError(
+                    message=f"Nel file di {name} non sono stati trovati dati per il periodo {expected_date}",
+                    details=(f"Date disponibili nel file: {', '.join(found_dates)}\n"
+                            "Selezionare un periodo presente nel file o caricare un file del periodo corretto."))
+            except:
+                raise DateMismatchError(
+                    message=f"Nel file di {name} non sono stati trovati dati per il periodo {expected_date}",
+                    details=(f"Selezionare un periodo presente nel file o caricare un file del periodo corretto."))
+            # return False
+        else:
+            return True
+        
     
         
 def run(file_o, file_p, mese, anno):
@@ -205,7 +213,6 @@ def update_df(df, new_value, nome, pagamenti = None):
         first_index = min(row_indices)
         
         name_mask = df["Name"] == nome
-        # df.loc[name_mask, "CHECK"] = "VERO"  # Update at the specific row index
 
         # For each row index and its data
         for row_idx, row_data in new_value.items():
@@ -339,7 +346,6 @@ def update_df(df, new_value, nome, pagamenti = None):
                         # pagamenti.loc[nome, "Brand"] = "Ordini "+str(brand)
 
             else: #non esiste già lo stesso ordine
-                st.write(len(skus))
                 for i in range(len(skus)):
                     new_row = {
                         "Name": str(name),
@@ -355,11 +361,8 @@ def update_df(df, new_value, nome, pagamenti = None):
                         "CHECK": "VERO",
                     }
                     new_rows.append(new_row)
-                
-                # st.write(pd.DataFrame(new_rows))
                     
                 df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) 
-                # st.write(pd.DataFrame(df[df["Name"] == name]))
                 pagamenti.loc[nome, "Brand"] = "Ordini "+str(brand)
                 print("New row added:", new_rows)          
 

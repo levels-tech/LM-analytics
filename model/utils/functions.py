@@ -32,18 +32,18 @@ def find_header_row(excel_file, column_name):
         return df
 
 
-
 # PARTIALLY_REFUNDED handling
 def check_partially_refunded(df_check, pagamenti=None):
     # Create mask for compare at price check
-    all_compare_nonzero = df_check.groupby("Name")["Lineitem compare at price"].transform(lambda x: (x != 0).all())
     
+    resi = df_check[((df_check["Lineitem compare at price"] == 0) & (df_check["Lineitem price"] > 10))]["Name"].unique()
+    resi_dubbi = df_check[(df_check["resi"] == "Dubbi")]["Name"].unique()
+
     if pagamenti is None:
         # Get names that meet conditions when pagamenti is None
-        altro = df_check[((df_check["Outstanding Balance"] != 0) | 
-                         (df_check["Refunded Amount"] != 0)) & 
-                        (df_check["CHECK"] == "FALSO") & 
-                        all_compare_nonzero]["Name"].unique()
+        altro = df_check[((df_check["Outstanding Balance"] != 0) | (df_check["Refunded Amount"] != 0))
+                         & (df_check["CHECK"] == "FALSO")
+                         & (~df_check["Name"].isin(resi))]["Name"].unique()
 
         for name in altro:
             name_mask = df_check["Name"] == name
@@ -68,14 +68,9 @@ def check_partially_refunded(df_check, pagamenti=None):
 
     else:
         # Get names that meet conditions when pagamenti is provided
-        altro = df_check[((df_check["Outstanding Balance"] != 0) | 
-                         (df_check["Refunded Amount"] != 0)) & 
-                        ((df_check["CHECK"] == "FALSO") | 
-                         (df_check["CHECK"] == "NON TROVATO") | 
-                         (df_check["CHECK"] == "VALORE NAN")) &
-                        (~(all_compare_nonzero & 
-                           df_check["Total"] == (df_check["Subtotal"] + 
-                                               df_check["Shipping"])))]["Name"].unique()
+        altro = df_check[(~df_check["Name"].isin(resi_dubbi))
+                         & ((df_check["Outstanding Balance"] != 0) | (df_check["Refunded Amount"] != 0)) 
+                         & ((df_check["CHECK"] == "FALSO") | (df_check["CHECK"] == "NON TROVATO") | (df_check["CHECK"] == "VALORE NAN"))]["Name"].unique()
 
         for name in altro:
             name_mask = df_check["Name"] == name

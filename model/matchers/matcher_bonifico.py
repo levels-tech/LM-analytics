@@ -39,7 +39,6 @@ class BonificoMatcher(PaymentMatcher):
         paid_at = df_check['Paid at'].str.replace(r'\s[+-]\d{4}$', '', regex=True)
         df_check['Time_difference'] = abs((pd.to_datetime(paid_at).dt.tz_localize(None) - pd.to_datetime(df_check['Data'], errors='coerce').dt.tz_localize(None)).dt.days)
         # df_check = df_check[(df_check['Time_difference'] >= 0) | df_check['Time_difference'].isna()]
-        # print("BONIFICO URGENTE", df_check[["Name", "Total", "CHECK", "Time_difference"]])
         
         # Find the minimum Days_difference for each "Numero Pagamento"
         df_check = self.apply_checks(df_check, bonifico = True)
@@ -52,6 +51,5 @@ class BonificoMatcher(PaymentMatcher):
         df_full = df_full.drop_duplicates(subset=columns)
         df_full["CHECK"] = df_full["CHECK"].fillna("NON TROVATO")
         df_full["Metodo"] = "Bonifico"
-        print("BONIFICO isa", df_full[["Importo", "CHECK", "Brand"]]) #df_check[["Name", "Total", "CHECK"]])
 
         return df_check, df_full, columns

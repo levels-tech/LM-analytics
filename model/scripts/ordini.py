@@ -30,7 +30,7 @@ class Ordini:
             f["Brand"] = name
             f[f.columns] = f.groupby('Name')[f.columns].ffill()
 
-            expected_date = f"{self.anno}-{str(self.mese).zfill(2)}"
+            expected_date = f"{self.anno}-{self.mese:02d}"  #f"{self.anno}-{str(self.mese).zfill(2)}"
             f_filtered = f[(f["Paid at"].str[:7] == expected_date) | (f["Paid at"].isna())].copy()
         else:
             f_filtered = pd.DataFrame()  # or handle the missing file as needed
@@ -47,10 +47,6 @@ class Ordini:
         self.df = pd.concat([lil, agee], ignore_index=True) if len(lil) > 0 or len(agee) > 0 else pd.DataFrame()
 
         self.colonne = self.df.columns
-
-        # escludere = ["#42196", "#42244", "#42439", "#42471", "#42518", "#42675", "#42676", "#42691", "#42726", "#42745", "#42833", "#42927", "#43014", "#43017", ]
-
-        # self.df = self.df[~self.df['Name'].isin(escludere)]
 
     #gestire i nomi dei pagamenti
     def handle_payment_method(self):
@@ -188,6 +184,8 @@ class Ordini:
                             self.df.loc[primi_items_gioielli.index, 'Lineitem quantity'] = item_restituito_quantity - item_comprato_dopo_quantity
                         elif total == 0:
                             self.df.loc[primi_items_gioielli.index, 'Lineitem quantity'] = item_restituito_quantity - item_comprato_dopo_quantity
+                        else:
+                            self.df.loc[group.index, "resi"] = "Dubbi"
 
 
                     #più di un oggetto tra quelli comprati inizialmente potrebbe essere stato scambiato
@@ -211,6 +209,12 @@ class Ordini:
                                 self.df.loc[matched_row.index, 'Lineitem quantity'] = item_restituito_quantity - item_comprato_dopo_quantity
                             elif total == 0:
                                 self.df.loc[matched_row.index, 'Lineitem quantity'] = item_restituito_quantity - item_comprato_dopo_quantity
+                            else:
+                                self.df.loc[group.index, "resi"] = "Dubbi"
+                        else:
+                            self.df.loc[group.index, "resi"] = "Dubbi"
+                    else:
+                        self.df.loc[group.index, "resi"] = "Dubbi"
    
                 #più oggeti sono stati scambiati
                 elif len(items_comprati_dopo) == 2:
@@ -247,6 +251,14 @@ class Ordini:
                             elif total == 0:
                                 self.df.loc[item_aggiunto_e_reso.index, 'Lineitem quantity'] = 0
                                 self.df.loc[primi_items_gioielli.index, 'Lineitem quantity'] = 0
+                            else:
+                                self.df.loc[group.index, "resi"] = "Dubbi"
+                        else:
+                            self.df.loc[group.index, "resi"] = "Dubbi"
+                    else:
+                        self.df.loc[group.index, "resi"] = "Dubbi"
+                else:
+                    self.df.loc[group.index, "resi"] = "Dubbi"
 
         return self.df
     
