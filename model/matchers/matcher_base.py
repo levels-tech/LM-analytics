@@ -33,11 +33,23 @@ class PaymentMatcher:
                 f = find_header_row(excel_file, "Importo")
             elif name == "Qromo":
                 csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))
-                f = pd.read_csv(csv_file, dtype={date_column[name]: "string"}, thousands='.', decimal=",")
+                try:
+                    print("virgola")
+                    f = pd.read_csv(csv_file, delimiter=",", dtype={date_column[name]: "string"}, thousands='.', decimal=",")
+                except:
+                    print("punto e virgola")
+                    csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))  # Create a new instance
+                    f = pd.read_csv(csv_file, delimiter=";", dtype={date_column[name]: "string"}, thousands='.', decimal=",")            
             else:
                 csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))
-                f = pd.read_csv(csv_file, dtype={date_column[name]: "string"})
-
+                try:
+                    print("virgola")
+                    f = pd.read_csv(csv_file, delimiter=",", dtype={date_column[name]: "string"})
+                except:
+                    print("punto e virgola")
+                    csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))  # Create a new instance
+                    f = pd.read_csv(csv_file, delimiter=";", dtype={date_column[name]: "string"})
+            
             columns = f.columns
             
             f["Giorno"] = f[date_column[name]].apply(reformat_date)
@@ -240,11 +252,19 @@ class PaymentMatcher:
         df_check["Euro"] = 0.0 
 
         for index, row in df_check.iterrows():
+            if row["Valuta"] != "EUR":
+                print("valuta diversa")
+                print(row[["CHECK", "Total", "Importo Pagato"]])
             if row["CHECK"] == "FALSO" and row["Valuta"] != "EUR":
+                print("Valuta")
                 row["Euro"] = row["Importo Pagato"] * get_valute[row["Valuta"]]
                 if (row["Total"] - 10) < row["Euro"] < (row["Total"] + 10):
+                    print("Valuta ok")
                     df_check.at[index, "Importo Pagato"] = row["Euro"] 
                     df_check.at[index, "CHECK"] = "VERO" 
+                else:
+                    print("Valuta non ok")
+                    df_check.at[index, "CHECK"] = "VALUTA_" + row["Valuta"]
         df_check = df_check.drop("Euro", axis = 1)
 
         return df_check

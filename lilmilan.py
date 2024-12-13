@@ -221,6 +221,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     names_count_pagamenti = len(st.session_state.pagamenti)
 
     lil_df = df_rilevante_sorted[(df_rilevante_sorted["CHECK"] != "VERO") & (df_rilevante_sorted["Brand"] == "Ordini LIL")].copy()
+    print(lil_df.CHECK.value_counts())
     lil_df = lil_df.drop_duplicates(subset=colonne_to_drop)
     last_index_lil = lil_df['original_index'].max()
     name_lil = lil_df["Name"].unique()
@@ -234,7 +235,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                 name_agee if len(name_agee) > 0 else np.array([])
                                 ])
 
-    pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] != "VERO")].copy()
+    # pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] != "VERO")].copy()
 
     modified_count = 0
 
@@ -257,6 +258,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                 check = name_df["CHECK"].values[0]
                 metodo = name_df["Payment Method"].values[0]
                 st.session_state.numeri_pagamenti = []
+                pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] != "VERO")].copy()
 
                 if check == "FALSO":
                     
@@ -283,6 +285,11 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                 elif check == "LONDON":
                     st.write(f"Il total è corretto, verificare se la **Location** dell'ordine è **LIL House London**")
                     st.write(f"Location attuale: **{name_df['Location'].values[0]}**")
+
+
+                elif check.startswith("VALUTA"):
+                    st.write(f"Il pagamento non è stato fatto in EURO, confermare l'importo effettivamente incassato.")
+                    st.write(f"Importo pagato in **{check.split("_")[1]}**: **{name_df['Importo Pagato'].values[0]}**")
 
                 st.dataframe(name_df[colonne], use_container_width=True)
 
@@ -470,17 +477,18 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             elif column == "Payment Method":
                                 current_value = name_df[column].values[0]
                                 input_key = f"{column}_{name}_0"
+                                payment_options = payments
                                 
                                 # Split the current payment method on '+' and clean the options
-                                if pd.notna(current_value):
-                                    if st.session_state.metodo_pagamento is None:
-                                        payment_options = [opt.strip() for opt in current_value.split('+')] 
-                                    else:
-                                        payment_options = [opt.strip() for opt in current_value.split('+')] + ([st.session_state.metodo_pagamento] 
-                                                                                                               if st.session_state.metodo_pagamento not in [opt.strip() 
-                                                                                                                                                            for opt in current_value.split('+')] else [])
-                                else:
-                                    payment_options = payments
+                                # if pd.notna(current_value):
+                                #     if st.session_state.metodo_pagamento is None:
+                                #         payment_options = [opt.strip() for opt in current_value.split('+')] 
+                                #     else:
+                                #         payment_options = [opt.strip() for opt in current_value.split('+')] + ([st.session_state.metodo_pagamento] 
+                                #                                                                                if st.session_state.metodo_pagamento not in [opt.strip() 
+                                #                                                                                                                             for opt in current_value.split('+')] else [])
+                                # else:
+                                #     payment_options = payments
                                     
                                 new_value = st.selectbox(
                                     f"Selezionare {column}:",
@@ -501,12 +509,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                     format="%.2f",  # Format to display the float with 2 decimal places
                                     key=input_key)
                                 
-                                # # Check if the new total matches Importo Pagato
-                                # if new_value:  # Only check if a value was entered
-                                #     try:
-                                #     except ValueError:
-                                #         st.error("Il valore inserito per Total non è un valido. Inserire un numero.")
-                                #         all_required_fields_filled = False
                                     
                             else:
                                 # For other non-Lineitem columns
@@ -567,7 +569,13 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             new_total = float(new_values[list(new_values.keys())[0]]['values']['Total'])
                             if len(selected_rows) == 0:
                                 importo_pagato = float(name_df["Importo Pagato"].values[0])
-                            
+
+                            if check.startswith("VALUTA"):
+                                importo_pagato = new_total
+                                numero_pagamento = name_df["Numero Pagamento"].values[0]
+                                st.session_state.pagamenti.loc[st.session_state.pagamenti['Numero Pagamento'] == numero_pagamento, 'Lordo'] = importo_pagato
+                                st.session_state.pagamenti.loc[st.session_state.pagamenti['Numero Pagamento'] == numero_pagamento, 'CHECK'] = "VERO"
+
                             if new_total != importo_pagato:                                
                                 st.session_state[f'needs_confirmation_{name}'] = True
                                 st.session_state[f'new_values_{name}'] = new_values
@@ -954,16 +962,18 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                 current_value = name_df[column].values[0]
                                 input_key = f"{column}_{name}_0"
                                 
+                                payment_options = payments
+                                
                                 # Split the current payment method on '+' and clean the options
-                                if pd.notna(current_value):
-                                    if st.session_state.metodo_pagamento is None:
-                                        payment_options = [opt.strip() for opt in current_value.split('+')] 
-                                    else:
-                                        payment_options = [opt.strip() for opt in current_value.split('+')] + ([st.session_state.metodo_pagamento] 
-                                                                                                               if st.session_state.metodo_pagamento not in [opt.strip() 
-                                                                                                                                                            for opt in current_value.split('+')] else [])
-                                else:
-                                    payment_options = payments
+                                # if pd.notna(current_value):
+                                #     if st.session_state.metodo_pagamento is None:
+                                #         payment_options = [opt.strip() for opt in current_value.split('+')] 
+                                #     else:
+                                #         payment_options = [opt.strip() for opt in current_value.split('+')] + ([st.session_state.metodo_pagamento] 
+                                #                                                                                if st.session_state.metodo_pagamento not in [opt.strip() 
+                                #                                                                                                                             for opt in current_value.split('+')] else [])
+                                # else:
+                                #     payment_options = payments
                                     
                                 new_value = st.selectbox(
                                     f"Selezionare {column}:",
@@ -1214,7 +1224,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
 ################### pagamenti
 
-    can_proceed = modified_count >= len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
+    can_proceed = modified_count >= 0 #len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
 
     if can_proceed:
 
@@ -1493,7 +1503,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
             st.subheader("Nessun pagamento deve essere controllato")
                         
 ####EXCEL            
-        can_proceed_pagamenti = count_pagamenti >= len(p) 
+        can_proceed_pagamenti = count_pagamenti >= 0# len(p) 
 
         if can_proceed_pagamenti:
             

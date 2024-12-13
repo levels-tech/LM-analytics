@@ -169,7 +169,7 @@ class MatcherRunner:
 
             subset_columns = self.df_ordini_all.columns[:self.df_ordini_all.columns.get_loc("Payment References") + 2]
 
-            self.df_ordini_all = self.df_ordini_all.sort_values('CHECK', key=lambda x: x.map({'VERO': 0, 'FALSO': 1, 'NON TROVATO': 2}))
+            self.df_ordini_all = self.df_ordini_all.sort_values('CHECK', key=lambda x: x.map(lambda v: 0 if v == 'VERO' else 1 if v.startswith('VALUTA') else 2 if v == 'FALSO' else 3))
             self.df_ordini_all = self.df_ordini_all.drop_duplicates(subset=subset_columns, keep='first')
 
             self.df_ordini_all = self.handle_nan()
@@ -179,8 +179,7 @@ class MatcherRunner:
             self.df_ordini_all.sort_index(inplace=True)
             self.df_ordini_all['Total'] = self.df_ordini_all.groupby('Name')['Total'].transform(lambda x: x.where(x.index == x.index.min(), np.nan))
 
-            self.df_ordini_all.to_excel("ordini.xlsx")
-
+            # self.df_ordini_all.to_excel("ordini.xlsx")
 
             return self.df_ordini_all, df_pagamenti, self.columns
         

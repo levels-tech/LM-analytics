@@ -2,6 +2,7 @@
 
 import streamlit as st
 import pandas as pd
+import csv
 
 from model.scripts.ordini import Ordini
 from model.scripts.runner import MatcherRunner
@@ -35,7 +36,16 @@ def check_files(file, name, mese, anno):
         if name == "Bonifici":
             f = find_header_row(f_file, "Importo")
         else:
-            f = pd.read_csv(f_file, dtype={date_column[name]: "string"}) #, encoding="ISO-8859-1")
+            print(name)
+            # Detect the delimiter
+            try:
+                print("virgola")
+                f_file.seek(0)  # Reset file pointer
+                f = pd.read_csv(f_file, delimiter=",", dtype={date_column[name]: "string"})
+            except:
+                print("punto e virgola")
+                f_file.seek(0)  # Reset file pointer again
+                f = pd.read_csv(f_file, delimiter=";", dtype={date_column[name]: "string"})
         
         f[date_column[name]] = f[date_column[name]].apply(reformat_date)
         f_filtered = f[f[date_column[name]].str[:7] == expected_date].copy()
@@ -137,6 +147,7 @@ def add_row(df, diff, payment, nome, last_index):
     index = template_row["original_index"]
     original_method = template_row["Payment Method"]
     original_total = template_row["Total"]
+    original_refund = template_row["Refunded Amount"]
 
     # Handle cases when payment and diff are lists
     if len(payment) > 1 and len(diff) > 1:
@@ -144,12 +155,16 @@ def add_row(df, diff, payment, nome, last_index):
         for pay, d in zip(payment, diff):
             if pay == original_method:
                 df.loc[df['original_index'] == index, "Total"] = original_total + d
+                if d < 0:
+                    df.loc[df['original_index'] == index, "Refunded Amount"] = original_refund + abs(d)
             else:
                 new_row = template_row.copy()
                 new_row['Total'] = d
                 new_row['Payment Method'] = pay
                 new_row['Lineitem quantity'] = 0
                 new_row['original_index'] = last_index + 1
+                if d < 0:
+                    new_row['Refunded Amount'] = abs(d)
                 df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                 last_index += 1
 
@@ -158,12 +173,16 @@ def add_row(df, diff, payment, nome, last_index):
         # Sum diff elements and create one row
         if payment[0] == original_method:
             df.loc[df['original_index'] == index, "Total"] = original_total + sum(diff)
+            if (diff < 0).any():  # Check if any value in diff is negative
+                df.loc[df['original_index'] == index, "Refunded Amount"] = original_refund + abs(diff[diff < 0].sum())
         else:
             total_diff = sum(diff)
             template_row['Total'] = total_diff
             template_row['Payment Method'] = payment[0]  # Payment is a single value
             template_row['Lineitem quantity'] = 0
             template_row['original_index'] = last_index + 1
+            if (diff < 0).any():  # Check if any value in diff is negative
+                template_row["Refunded Amount"] = original_refund + abs(diff[diff < 0].sum())
             df = pd.concat([df, pd.DataFrame([template_row])], ignore_index=True)
             
     elif len(diff) == 1 and len(payment) == 1:
@@ -171,11 +190,15 @@ def add_row(df, diff, payment, nome, last_index):
         if payment[0] == original_method:
             # Locate the first row of the subset where 'Name' matches 'nome'
             df.loc[df['original_index'] == index, "Total"] = original_total + diff[0]
+            if diff[0] < 0:  # Check if any value in diff is negative
+                df.loc[df['original_index'] == index, "Refunded Amount"] = original_refund + abs(diff[0])
         else:
             template_row['Total'] = diff[0]
             template_row['Payment Method'] = payment[0]
             template_row['Lineitem quantity'] = 0
             template_row['original_index'] = last_index + 1
+            if diff[0] < 0:  # Check if any value in diff is negative
+                template_row["Refunded Amount"] = abs(diff[0])
             df = pd.concat([df, pd.DataFrame([template_row])], ignore_index=True)
 
     return df
@@ -257,6 +280,7 @@ def update_df(df, new_value, nome, pagamenti = None):
             items_name = new_value[5]
             country = new_value[6]
             metodo = new_value[7]
+            refund = abs(totale) if totale < 0 else 0
             location = new_value[8]
             brand = new_value[9]
 
@@ -271,15 +295,15 @@ def update_df(df, new_value, nome, pagamenti = None):
                 # country_pagamenti = rows_esistenti["Shipping Country"].values[0]
                 metodo_pagamenti = rows_esistenti["Payment Method"].values[0]
                 # location_pagamenti = rows_esistenti["Location"].values[0]
+                refund_pagamenti = rows_esistenti["Refunded Amount"].values[0]
                 brand_pagamenti = rows_esistenti["Brand"].values[0]
 
-                if metodo == metodo_pagamenti:  
-                   # Get the indices of existing rows
+                if metodo == metodo_pagamenti:  #il metodo di pagamento aggiunto è uguale a quello esistente
                     existing_indices = df[df["Name"] == name].index
                     df.loc[existing_indices[0], "Total"] = float(totale_pagamenti) + float(totale)
                     pagamenti.loc[pagamenti["original_index"] == nome, "Brand"] = "Ordini "+str(brand)
 
-                    # Handle matching SKUs
+                    #SKUs che già esistono nell'ordine
                     matched_skus = set()
                     for i, sku in enumerate(skus):
                         matching_positions = [j for j, s_p in enumerate(skus_pagamenti) if str(s_p) == str(sku)]
@@ -287,11 +311,13 @@ def update_df(df, new_value, nome, pagamenti = None):
                         if matching_positions:
                             matched_skus.add(sku)
                             for pos in matching_positions:
+                                if refund != 0:
+                                    df.loc[existing_indices[pos], "Refunded Amount"] = refund_pagamenti + refund
                                 if float(quantities_pagamenti[pos]) == 0:
                                     df.loc[existing_indices[pos], "Lineitem quantity"] = int(quantities[i])
                                     break
 
-                    # Add new rows for unmatched SKUs
+                    #SKUs che non esistono già nelll'ordine
                     for i, sku in enumerate(skus):
                         if sku not in matched_skus:
                             new_row = {
@@ -302,6 +328,7 @@ def update_df(df, new_value, nome, pagamenti = None):
                                 "Lineitem name": str(items_name[i]),
                                 "Lineitem sku": str(sku),
                                 "Shipping Country": str(country).strip(),
+                                "Refunded Amount": float(refund),
                                 "Location": str(location),
                                 "Payment Method": str(metodo),
                                 "Brand": str(brand_pagamenti),
@@ -312,8 +339,7 @@ def update_df(df, new_value, nome, pagamenti = None):
                         if new_rows:
                             df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) 
                         
-                else:
-                    # Different payment method - create new rows based on SKU matching
+                else: #metodo di pagamento aggiunto è diverso da quello dell'ordine - create new rows based on SKU matching
                     first_row = True
                     pagamenti.loc[pagamenti["original_index"] == nome, "Brand"] = "Ordini "+str(brand)
                     
@@ -332,6 +358,7 @@ def update_df(df, new_value, nome, pagamenti = None):
                                     "Lineitem quantity": new_quantity,
                                     "Lineitem sku": str(sku),
                                     "Shipping Country": str(country).strip(),
+                                    "Refunded Amount": float(refund),
                                     "Location": str(location),
                                     "Payment Method": str(metodo),
                                     "Brand": "Ordini " + str(brand_pagamenti),
@@ -356,6 +383,7 @@ def update_df(df, new_value, nome, pagamenti = None):
                         "Lineitem sku": str(skus[i]),
                         "Shipping Country": str(country).strip(),
                         "Location": str(location),
+                        "Refunded Amount": float(refund),
                         "Payment Method": str(metodo),
                         "Brand": "Ordini "+str(brand),
                         "CHECK": "VERO",

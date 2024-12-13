@@ -325,13 +325,13 @@ class OrderSummary:
 
         daily_sheet = workbook['Totale_daily'] if 'Totale_daily' in workbook.sheetnames else workbook.create_sheet('Totale_daily')
 
-        for row in daily_sheet.iter_rows(min_row=1, max_col=10, max_row=daily_sheet.max_row):
+        for row in daily_sheet.iter_rows(min_row=1, max_col=20, max_row=daily_sheet.max_row):
             for cell in row:
                 cell.value = None
 
         bold_font = Font(bold=True)
         # Set static headers for Giorno and Totale
-        headers = {'A1': 'Giorno', 'B1': 'Totale', 'C1': ''}
+        headers = {'A1': 'Giorno', 'B1': 'Refunded Amount', 'C1':	'Total', 'D1':'', 'E1':	'Totale Effettivo'}
 
         # Filter the "Ordini LIL" sheet data to get unique Shipping Country values with CHECK != 'ESCLUSO'
         ordini_lil_df = self.df_ordini_all[(self.df_ordini_all['Brand'] == 'Ordini LIL') 
@@ -342,6 +342,9 @@ class OrderSummary:
         ordini_lil_df.insert(paid_at_index + 1, "Data Giorno", ordini_lil_df["Paid at"].apply(self.reformat_date))
 
         unique_countries = ordini_lil_df['Shipping Country'].unique()
+        ue_countries  = ['AT', 'BE', 'BG', 'CY', 'HR', 'DK', 'EE', 'FI', 'FR', 'DE', 'EL', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'CZ', 'SK', 'RO', 'SI', 'ES', 'SE', 'HU']
+
+        art8_countries = [code for code in unique_countries if code not in ue_countries]
 
         # Add static headers
         for cell_position, value in headers.items():
@@ -350,13 +353,24 @@ class OrderSummary:
             cell.font = bold_font
 
         # Add headers for each unique Shipping Country starting from column 'D'
-        start_col = 4  # Column index for 'D'
+        start_col = 7  # Column index for 'G'
 
-        for i, country in enumerate(unique_countries):
-            col_letter = chr(64 + start_col + i)  # Convert to Excel column letter
-            cell_position = f'{col_letter}1'
-            daily_sheet[cell_position] = country
-            daily_sheet[cell_position].font = bold_font
+        #paesi ue 
+        i = 0
+        for country in unique_countries:
+            if country in ue_countries:
+                col_letter = chr(64 + start_col + i)  # Convert to Excel column letter
+                cell_position = f'{col_letter}1'
+                daily_sheet[cell_position] = country
+                daily_sheet[cell_position].font = bold_font
+                i += 1
+
+        #paesi extra ue tutti messi insieme
+        col_letter_art8 = chr(64 + start_col + i)  # Convert to Excel column letter
+        print("art8", col_letter_art8)
+        cell_position = f'{col_letter_art8}1'
+        daily_sheet[cell_position] = "Art.8"
+        daily_sheet[cell_position].font = bold_font
 
         # Get unique dates from the "Giorno" column
         unique_dates = ordini_lil_df['Data Giorno'].dropna().unique()
@@ -365,30 +379,52 @@ class OrderSummary:
         # Start filling the first column (A) with these unique dates, beginning at row 2
         for row, giorno in enumerate(unique_dates, start=2):
             daily_sheet[f'A{row}'] = giorno
-            daily_sheet[f'B{row}'] = f"=SUMIFS('Ordini LIL'!$M:$M, 'Ordini LIL'!$E:$E, A{row})"
+            daily_sheet[f'B{row}'] = f"=SUMIFS('Ordini LIL'!$AY:$AY, 'Ordini LIL'!$E:$E, A{row})"
+            daily_sheet[f'C{row}'] = f"=SUMIFS('Ordini LIL'!$M:$M, 'Ordini LIL'!$E:$E, A{row}) + SUMIFS('Ordini LIL'!$AY:$AY, 'Ordini LIL'!$E:$E, A{row})"
+            daily_sheet[f'E{row}'] = f"=SUMIFS('Ordini LIL'!$M:$M, 'Ordini LIL'!$E:$E, A{row})"
 
-            # Populate each country column (D onwards) with the SUMIFS formula
-            for col_index, country in enumerate(unique_countries, start=start_col):
-                col_letter = chr(64 + col_index)
-                daily_sheet[f'{col_letter}{row}'] = f"=SUMIFS('Ordini LIL'!$M:$M, 'Ordini LIL'!$E:$E, $A{row}, 'Ordini LIL'!$AR:$AR, {col_letter}$1)"
+            #eu contries
+            i = 0
+            for country in unique_countries:
+                if country in ue_countries:
+                    col_letter = chr(64 + start_col + i)  # Convert to Excel column letter
+                    print(country)
+                    daily_sheet[f'{col_letter}{row}'] = f"=SUMIFS('Ordini LIL'!$M:$M, 'Ordini LIL'!$E:$E, $A{row}, 'Ordini LIL'!$AR:$AR, {col_letter}$1)" 
+                    print(f"=SUMIFS('Ordini LIL'!$M:$M, 'Ordini LIL'!$E:$E, $A{row}, 'Ordini LIL'!$AR:$AR, {col_letter}$1)" )
+                    i += 1
+        
+            # ART8 countries
+            final_formula = " + ".join([f'SUMIFS(\'Ordini LIL\'!$M:$M, \'Ordini LIL\'!$E:$E, $A{row}, \'Ordini LIL\'!$AR:$AR, \"{country}\")' for country in art8_countries])
+            daily_sheet[f'{col_letter_art8}{row}'] = f"={final_formula}"
+            print(f"={final_formula}")
 
             idx = row
+
 
         daily_sheet[f'A{idx+2}'] = "Totale"
         daily_sheet[f'A{idx+2}'].font = Font(bold=True)
         daily_sheet[f'B{idx+2}'] = f"=SUM(B2:B{idx})"
-        daily_sheet[f'B{idx+2}'].font = Font(bold=True)
+        daily_sheet[f'C{idx+2}'] = f"=SUM(C2:C{idx})"
+        daily_sheet[f'E{idx+2}'] = f"=SUM(E2:E{idx})"
+        daily_sheet[f'E{idx+2}'].font = Font(bold=True)
 
-        for col_index, country in enumerate(unique_countries, start=start_col):
-            col_letter = chr(64 + col_index)
-            daily_sheet[f'{col_letter}{idx+2}'] = f"=SUM({col_letter}2:{col_letter}{idx})"
+        #eu countries
+        i = 0
+        for country in unique_countries:
+            if country in ue_countries:
+                col_letter = chr(64 + start_col + i)  # Convert to Excel column letter
+                daily_sheet[f'{col_letter}{idx+2}'] = f"=SUM({col_letter}2:{col_letter}{idx})"
+                i += 1
 
-        ultima_col_index = start_col + len(unique_countries) - 1
-        ultima_lettera = chr(64 + ultima_col_index)
+        #art8
+        daily_sheet[f'{col_letter_art8}{idx+2}'] = f"=SUM({col_letter_art8}2:{col_letter_art8}{idx})"
 
-        daily_sheet[f'{chr(64 + ultima_col_index + 2)}{idx+2}'] = f"=SUM(D{idx+2}:{ultima_lettera}{idx+2})"
-        daily_sheet[f'{chr(64 + ultima_col_index + 2)}{idx+2}'].font = Font(bold=True)
+        col_index_art8 = ord(col_letter_art8) - 64
 
+        # Add the final SUM formula for the total
+        total_col_letter = chr(64 + col_index_art8 + 2)  # Next column after the last one
+        daily_sheet[f'{total_col_letter}{idx+2}'] = f"=SUM(G{idx+2}:{col_letter_art8}{idx+2})"
+        daily_sheet[f'{total_col_letter}{idx+2}'].font = Font(bold=True)
 
         workbook.save(self.filename)
 

@@ -19,6 +19,7 @@ class PaypalMatcher(PaymentMatcher):
         df_full['Lordo'] = df_full['Lordo'].str.replace(',', '.', regex=False)  # Replace commas with periods (decimal separator)
         df_full['Lordo'] = pd.to_numeric(df_full['Lordo'], errors='coerce')  # Convert to numeric, coercing errors to NaN        
         df_full = df_full[df_full["Tipo"].isin(["Pagamento Express Checkout", "Rimborso di pagamento"])]
+        df_full = df_full[df_full["Stato"] == "Completata"]
         df_full = df_full[~df_full["Nome"].str.contains("propac", case=False, na=False)] #ha detto di toglierlo
 
         df = df_full[['Data', "Nome", "Tipo", 'Valuta', 'Lordo', 'N° ordine commerciante', "Titolo oggetto"]]
@@ -39,8 +40,15 @@ class PaypalMatcher(PaymentMatcher):
                 & (df_check["CHECK"] == "VERO"))
         df_check.loc[mask & df_check["Payment Method"].str.contains("PayPal Express Checkout"), "Payment Method"] = "PayPal Express Checkout" 
 
+        a = df_full[df_full["N° ordine commerciante"] == "rQlzSIsAIkV6hSK5uNvXErq60"]
+        b = df_check[["Name", "Data", "Numero Pagamento", "Importo Pagato", "Brand", "CHECK"]]
+        b2 = b[b["Numero Pagamento"] ==  "rQlzSIsAIkV6hSK5uNvXErq60"]
+
+        print("paypal", a, b2)
         df_full = pd.merge(df_full, df_check[["Name", "Numero Pagamento", "Importo Pagato", "Brand", "CHECK"]], left_on = 'N° ordine commerciante', right_on = "Numero Pagamento", how = "left")
         df_full = df_full.drop_duplicates(subset=columns)
+        a = df_full[df_full["N° ordine commerciante"] == "rQlzSIsAIkV6hSK5uNvXErq60"]
+        print("paypal", a)
         df_full["CHECK"] = df_full["CHECK"].fillna("NON TROVATO")
         df_full["Metodo"] = "PayPal Express Checkout"
 
