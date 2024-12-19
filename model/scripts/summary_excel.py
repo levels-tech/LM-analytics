@@ -1,6 +1,7 @@
 #CLASSE PER GENERARE L'EXCEL:
 
 import pandas as pd
+import numpy as np
 import streamlit as st
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment
@@ -21,6 +22,38 @@ class OrderSummary:
             group.loc[group['Total'].notna().cumsum() > 1, 'Total'] = pd.NA
         # If values are different, keep them as they are (no changes)
         return group
+    
+    # Function to process data for a specific brand
+    def process_location_df(self, df, brand, exclude_strings):
+        df_filtered = df[(df['Brand'] == brand) 
+                        & (df['CHECK'] != 'ESCLUSO') 
+                        & ((df['Total'] != 0) | ((df['Total'] == 0) & (df['Payment Method'] == "Gift Card")))]
+        
+        # Optimize 'Lineitem quantity gioiello' calculation
+        df_filtered['Lineitem quantity gioiello'] = np.where(
+            pd.isna(df_filtered['Lineitem name']) | (~df_filtered['Lineitem name'].str.contains('|'.join(exclude_strings), na=False)),
+            df_filtered['Lineitem quantity'], #if true
+            0 #if false
+        )
+        
+        # Calculate 'Lineitem quantity gioiello per name'
+        df_filtered['Lineitem quantity gioiello per name'] = df_filtered.groupby('Name')['Lineitem quantity gioiello'].transform('sum')
+        
+        # Group by 'Location'
+        group_location = df_filtered.groupby('Location').agg({
+            'Name': 'nunique',
+            'Lineitem quantity': 'sum',
+            'Lineitem quantity gioiello': 'sum'
+        }).reset_index()
+        
+        # Filter and group names with non-zero gioielli
+        gioielli = df_filtered[df_filtered['Lineitem quantity gioiello per name'] > 0].drop_duplicates('Name')
+        gioielli_count = gioielli.groupby('Location')['Name'].nunique()
+        gioielli_count.name = 'Name solo gioielli'
+        
+        # Merge the results
+        result = pd.merge(group_location, gioielli_count, on='Location', how='left').fillna(0)
+        return result
 
 
     def create_files(self):
@@ -284,28 +317,16 @@ class OrderSummary:
             cell.value = value
             cell.font = bold_font
 
+        # Apply to both brands
         exclude_strings = ["Luxury Pack", "Engraving", "E-Gift", "Repair", "Whatever Tote", "Piercing Party", "LIL Bag"]
-        # exclude_skus = st.session_state.sku_da_escludere
 
-        # dic_to_esclude = {
-        #     "Luxury Pack": ["15790000687"], 
-        #     "Engraving": ["15790001502", "15790001247"],
-        #     "E-Gift": ["15790000888", "15790000890","15790000892", "15790000893", "15790000894", "15790001073", "15790000891"],
-        #     "Repair": ["15790000916", "15790001059", "15790001060", "15790001064", "15790001065", "15790001068", "15790001070", "15790001083"],
-        #     "Whatever Tote": ["15790000914"],
-        #     "Piercing Party": [""],
-        #     "LIL Bag": ["15790000687", "15790000689"]
-        # }
+        # Sort and fill Total
+        df_ordini_fill = self.df_ordini_all.sort_values(by=['Name', "Total"])
+        df_ordini_fill["Total"] = df_ordini_fill.groupby('Name')["Total"].ffill()
 
-        df_ordini_gioielli = self.df_ordini_all[~self.df_ordini_all['Lineitem name'].str.contains('|'.join(exclude_strings), case=False, na=False)] #|
-                                                # ~self.df_ordini_all['Lineitem sku'].isin(exclude_skus)]
-    
-        df_lil = df_ordini_gioielli[(df_ordini_gioielli['Brand'] == 'Ordini LIL') 
-                                    & (df_ordini_gioielli['CHECK'] != 'ESCLUSO')
-                                    & (df_ordini_gioielli['Total'] > 0)]
-        df_agee = df_ordini_gioielli[(df_ordini_gioielli['Brand'] == 'Ordini AGEE') 
-                                     & (df_ordini_gioielli['CHECK'] != 'ESCLUSO')
-                                     & (df_ordini_gioielli['Total'] > 0)]
+        # Process LIL and AGEE data
+        df_lil = self.process_brand_data(df_ordini_fill, 'Ordini LIL', exclude_strings)
+        df_agee = self.process_brand_data(df_ordini_fill, 'Ordini AGEE', exclude_strings)
 
         start_row = 3
         start_row = self.create_location_stats(df_lil, start_row, summary_sheet, 'LIL')
