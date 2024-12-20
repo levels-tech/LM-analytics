@@ -206,42 +206,60 @@ class OrderSummary:
     def create_location_stats(self, df, start_row, summary_sheet, store_name):
 
         df['Lineitem quantity'] = df['Lineitem quantity'].astype(int)
-        location_stats = df.groupby('Location').agg({'Name': 'nunique',
-                                                     'Lineitem quantity': 'sum'}).reset_index()
-        stats_dict = location_stats.set_index('Location').to_dict()
+        df['Lineitem quantity gioiello'] = df['Lineitem quantity gioiello'].astype(int)
+        # location_stats = df.groupby('Location').agg({'Name': 'nunique',
+        #                                              'Lineitem quantity': 'sum'}).reset_index()
+        # stats_dict = location_stats.set_index('Location').to_dict()
+
+        # Get unique locations in the desired order
         title_of_locations = df["Location"].unique()
 
-        summary_sheet.merge_cells(f'L{start_row-1}:P{start_row-1}') 
+        # Prepare the summary sheet
+        summary_sheet.merge_cells(f'L{start_row-1}:R{start_row-1}') 
         cell = summary_sheet[f'L{start_row-1}']
         cell.value = store_name
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal='center', vertical='center')
 
+        # Group the DataFrame by Location to ensure data alignment
+        grouped_df = df.groupby("Location")
+
+        # Iterate over the unique locations
         for idx, location_label in enumerate(title_of_locations, start=start_row):
+            # Write the location name
             summary_sheet[f'L{idx}'] = location_label
+
+            # Add formula for total quantity based on the location
             summary_sheet[f'M{idx}'] = (
                 f'=SUMIFS(\'Ordini {store_name}\'!$M:$M, '
                 f'\'Ordini {store_name}\'!$BC:$BC, "{location_label}")'
             )
-            unique_orders = stats_dict['Name'].get(location_label, 0)
-            items_quantity = stats_dict['Lineitem quantity'].get(location_label, 0)
 
-            summary_sheet[f'N{idx}'] = unique_orders
-            summary_sheet[f'O{idx}'] = items_quantity
-            summary_sheet[f'P{idx}'] = f'=O{idx}/N{idx}'
-            summary_sheet[f'P{idx}'].number_format = '0.00'
+            # Retrieve corresponding data for the location
+            location_data = grouped_df.get_group(location_label) if location_label in grouped_df.groups else None
+            if location_data is not None:
+                # Fill in the data
+                summary_sheet[f'N{idx}'] = location_data["Name"].iloc[0]  # Assuming a single value per location
+                summary_sheet[f'O{idx}'] = location_data["Lineitem quantity"].iloc[0]
+                summary_sheet[f'P{idx}'] = location_data["Lineitem quantity gioiello"].iloc[0]
+                summary_sheet[f'Q{idx}'] = f'=O{idx}/N{idx}'
+                summary_sheet[f'Q{idx}'].number_format = '0.00'
+                summary_sheet[f'R{idx}'] = f'=P{idx}/N{idx}'
+                summary_sheet[f'R{idx}'].number_format = '0.00'
 
-            row = idx
+            last_row = idx
 
-        # Now idx will have a valid value after the loop, even if the list is empty
-        summary_sheet[f'L{row+1}'] = 'Totale'
-        summary_sheet[f'L{row+1}'].font = Font(bold=True)
-        summary_sheet[f'M{row+1}'] = f'=SUM(M{start_row}:M{row})'
-        summary_sheet[f'M{row+1}'].font = Font(bold=True)
-        summary_sheet[f'N{row+1}'] = f'=SUM(N{start_row}:N{row})'
-        summary_sheet[f'O{row+1}'] = f'=SUM(O{start_row}:O{row})'
-        summary_sheet[f'P{row+1}'] = f'=O{row+1}/N{row+1}'
-        summary_sheet[f'P{row+1}'].number_format = '0.00'
+        summary_sheet[f'L{last_row+1}'] = 'Totale'
+        summary_sheet[f'L{last_row+1}'].font = Font(bold=True)
+        summary_sheet[f'M{last_row+1}'] = f'=SUM(M{start_row}:M{last_row})'
+        summary_sheet[f'M{last_row+1}'].font = Font(bold=True)
+        summary_sheet[f'N{last_row+1}'] = f'=SUM(N{start_row}:N{last_row})'
+        summary_sheet[f'O{last_row+1}'] = f'=SUM(O{start_row}:O{last_row})'
+        summary_sheet[f'P{last_row+1}'] = f'=SUM(P{start_row}:P{last_row})'
+        summary_sheet[f'Q{last_row+1}'] = f'=O{last_row+1}/N{last_row+1}'
+        summary_sheet[f'Q{last_row+1}'].number_format = '0.00'
+        summary_sheet[f'R{last_row+1}'] = f'=P{last_row+1}/N{last_row+1}'
+        summary_sheet[f'R{last_row+1}'].number_format = '0.00'
 
         return start_row + len(title_of_locations) + 3
 
@@ -311,7 +329,7 @@ class OrderSummary:
         summary_sheet[f'G{row}'] = f'=SUM(G2:G{row-1})'
         summary_sheet[f'G{row}'].font = Font(bold=True)
 
-        headers = {'L1': 'Locations', 'M1': 'Incasso', 'N1': 'Ordini', 'O1': 'Items', 'P1': 'Oggetti per ordine'}
+        headers = {'L1': 'Locations', 'M1': 'Incasso', 'N1': 'Ordini', 'O1': 'Items', 'P1': 'Gioielli', 'Q1': 'Items per Ordine', 'R1': 'Gioielli per Ordine'}
         for cell_position, value in headers.items():
             cell = summary_sheet[cell_position]
             cell.value = value
@@ -325,8 +343,8 @@ class OrderSummary:
         df_ordini_fill["Total"] = df_ordini_fill.groupby('Name')["Total"].ffill()
 
         # Process LIL and AGEE data
-        df_lil = self.process_brand_data(df_ordini_fill, 'Ordini LIL', exclude_strings)
-        df_agee = self.process_brand_data(df_ordini_fill, 'Ordini AGEE', exclude_strings)
+        df_lil = self.process_location_df(df_ordini_fill, 'Ordini LIL', exclude_strings)
+        df_agee = self.process_location_df(df_ordini_fill, 'Ordini AGEE', exclude_strings)
 
         start_row = 3
         start_row = self.create_location_stats(df_lil, start_row, summary_sheet, 'LIL')
@@ -448,6 +466,3 @@ class OrderSummary:
         daily_sheet[f'{total_col_letter}{idx+2}'].font = Font(bold=True)
 
         workbook.save(self.filename)
-
-
-
