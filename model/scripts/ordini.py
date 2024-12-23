@@ -145,6 +145,12 @@ class Ordini:
 
     #gestire i cambi e modificare i totali e le quantità
     def handle_cambi(self):
+
+        #assicurarsi che i dati siano puliti: o 0 o nan
+        mask_cambi_sbaglaiti = (~self.df["Lineitem compare at price"].isna()) & (self.df["Lineitem compare at price"] != 0)
+        self.df.loc[mask_cambi_sbaglaiti, "Lineitem compare at price"] = np.nan
+
+        #gestire i resi
         nomi_cambi = self.df.loc[(self.df['Lineitem compare at price'] == 0) & 
                                  (self.df['Lineitem price'] != 0) 
                                 # & (self.df['Total'] != 0)
@@ -297,6 +303,26 @@ class Ordini:
         nan_mask = self.df[mask_rilevanti][colonne_non_na].isna().any(axis=1)
         self.df.loc[mask_rilevanti & nan_mask, "CHECK"] = "VALORE NAN"
 
+    def handle_nan(self):
+        fill_columns = ["Subtotal", "Shipping", "Total", "Discount Amount", "Refunded Amount", "Outstanding Balance"]
+        self.df[fill_columns] = self.df[fill_columns].fillna(0)
+        
+        colonne_non_na = ["Name", "Paid at", "Lineitem quantity", "Lineitem name", "Lineitem price", 
+                        "Payment Method", "Location", "Shipping Country", "Payment References"]
+        
+        rilevanti = self.df[(self.df["CHECK"] != "ESCLUSO")]["Name"].unique()
+        mask_rilevanti = self.df["Name"].isin(rilevanti)
+        
+        # Identify rows with NaN values
+        nan_mask = self.df[mask_rilevanti][colonne_non_na].isna()
+        nan_rows = nan_mask.any(axis=1)
+        
+        # For rows with NaN, append column names to 'CHECK'
+        def append_nan_columns(row):
+            nan_cols = nan_mask.columns[row.isna()]
+            return f"VALORE NAN ({'_'.join(nan_cols)})"
+        
+        self.df.loc[mask_rilevanti & nan_rows, "CHECK"] = self.df.loc[mask_rilevanti & nan_rows, colonne_non_na].apply(append_nan_columns, axis=1)
 
 
     def preprocess(self):

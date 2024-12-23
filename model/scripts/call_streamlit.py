@@ -6,8 +6,10 @@ import csv
 
 from model.scripts.ordini import Ordini
 from model.scripts.runner import MatcherRunner
+from model.scripts.summary_excel import OrderSummary 
 
 from model.matchers.matcher_bonifico import BonificoMatcher
+from model.matchers.matcher_cash import CashMatcher
 from model.matchers.matcher_qromo import QromoMatcher
 from model.matchers.matcher_paypal import PaypalMatcher
 from model.matchers.matcher_satispay import SatispayMatcher
@@ -83,6 +85,7 @@ def run(file_o, file_p, mese, anno):
         qromo_matcher = QromoMatcher(file_p, df_ordini=ordini)
         satispay_matcher = SatispayMatcher(file_p, df_ordini=ordini)
         bonifico_matcher = BonificoMatcher(file_p, df_ordini=ordini)
+        cash_matcher = CashMatcher(file_p, df_ordini=ordini)
 
         # Create the matchers list
         matchers = [
@@ -91,7 +94,8 @@ def run(file_o, file_p, mese, anno):
             qromo_matcher,
             satispay_matcher,
             paypal_matcher,
-            bonifico_matcher
+            bonifico_matcher,
+            cash_matcher
         ]
 
         runner = MatcherRunner(matchers, ordini)
@@ -107,22 +111,27 @@ def run(file_o, file_p, mese, anno):
         raise e
 
 
-def missing_fields(df, nome):
+def missing_fields(df, nome, exclude):
     to_check = []
     to_change = []
+    filtered_df = df[df["Name"] == nome]
     
     # Check for NaN values in specific columns
-    if df[df["Name"] == nome]["Paid at"].isna().all():
+    if filtered_df["Paid at"].isna().all():
         to_check.append("Paid at")
-    if df[df["Name"] == nome]["Shipping Country"].isna().all():
+    if filtered_df["Shipping Country"].isna().all():
         to_check.append("Shipping Country")
-    if df[df["Name"] == nome]["Location"].isna().all():
+    if filtered_df["Location"].isna().all():
         to_check.append("Location")
-    if df[df["Name"] == nome]["Payment Method"].str.contains(r'\+').all() & (~df[df["Name"] == nome]["Payment Method"].str.contains("Gift Card").all()):
+    if filtered_df["Payment Method"].str.contains(r'\+').all() & (~filtered_df["Payment Method"].str.contains("Gift Card").all()):
         to_change.append("Payment Method")
-    if df[df["Name"] == nome]["Payment Method"].str.count(r'\+').ge(2).all():
+    if filtered_df["Payment Method"].str.count(r'\+').ge(2).all():
         to_change.append("Payment Method")
-    
+    if filtered_df["Lineitem sku"].isna().any():
+        rows_with_nan_sku = filtered_df[filtered_df["Lineitem sku"].isna()]
+        if ~rows_with_nan_sku['Lineitem name'].str.contains('|'.join(exclude), case=False, na=False).all():
+            to_check.append("Lineitem sku")
+     
     return to_check, to_change
 
 
@@ -396,3 +405,7 @@ def update_df(df, new_value, nome, pagamenti = None):
 
     return df, pagamenti
     
+def generate_excel(df_ordini_all, pp, filename):
+    order_summary = OrderSummary(df_ordini_all, pp, filename)
+    order_summary.create_files()
+    return filename

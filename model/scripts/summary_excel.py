@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, Alignment
+from openpyxl.styles import Font, Alignment, PatternFill
 
 
 class OrderSummary:
@@ -55,6 +55,50 @@ class OrderSummary:
         result = pd.merge(group_location, gioielli_count, on='Location', how='left').fillna(0)
         return result
 
+    def check_names_pagamenti(self, df_pagamenti):
+
+        df_pagamenti = df_pagamenti.sort_values(by = "Data")
+        grouped_pagamenti = (df_pagamenti.groupby("Name", as_index=False).agg({"Importo Pagato": "sum",  # Sum over 'Importo Pagato'
+                                                                                "Numero Pagamento": "first",   # Take the first value of 'description'
+                                                                                "Metodo": "first"
+                                                                            }))
+
+        # Iterate over each unique Name in df_ordini
+        for name in grouped_pagamenti["Name"].unique():
+            num = grouped_pagamenti[grouped_pagamenti["Name"] == name]["Numero Pagamento"].values[0]
+            pag = grouped_pagamenti[grouped_pagamenti["Name"] == name]["Metodo"].values[0]
+            if pag == "Qromo" or (pag == "Satispay" and num == 0):
+                if name in self.df_ordini_all["Name"].values:
+                    total_importo = grouped_pagamenti.loc[grouped_pagamenti["Name"] == name, "Importo Pagato"].values[0]
+                    total_ordini = self.df_ordini_all.loc[self.df_ordini_all["Name"] == name, "Total"].values[0]
+
+                    # If total_importo == total_ordini
+                    if total_importo == total_ordini:
+                        df_pagamenti.loc[df_pagamenti["Name"] == name, "CHECK"] = "VERO"
+
+                    # If totals do not match, check individual rows
+                    else:
+                        name_rows = df_pagamenti[df_pagamenti["Name"] == name]
+
+                        for _, row in name_rows.iterrows():
+                            if row["Importo Pagato"] == total_ordini:
+                                # Mark the matched row as CHECK == VERO
+                                df_pagamenti.loc[(df_pagamenti["Name"] == name) & (df_pagamenti["Importo Pagato"] == total_ordini), "CHECK"] = "VERO"
+                            else:
+                                df_pagamenti.loc[(df_pagamenti["Name"] == name) & (df_pagamenti["Importo Pagato"] != total_ordini), ["CHECK", "Name"]] = ["NON TROVATO", None]
+
+                else:
+                    df_pagamenti.loc[df_pagamenti["Name"] == name, "CHECK"] = "NON TROVATO"
+
+
+        for numero, nome in st.session_state.pagamenti_da_aggiungere_lil.items():
+            df_pagamenti.loc[(df_pagamenti["Numero Pagamento"] == numero), ["CHECK", "Name"]] = ["VERO", nome]  
+
+        for numero, nome in st.session_state.pagamenti_da_aggiungere_agee.items():
+            df_pagamenti.loc[(df_pagamenti["Numero Pagamento"] == numero), ["CHECK", "Name"]] = ["VERO", nome]            
+
+        return df_pagamenti
+
 
     def create_files(self):
         try:
@@ -62,7 +106,8 @@ class OrderSummary:
                             'Totale_daily',     # Daily summary sheet
                             'Ordini LIL',       # Orders sheets
                             'Ordini AGEE',
-                            'Bonifico_LIL', 
+                            'Bonifico_LIL',
+                            'Cash_LIL', 
                             'PayPal_LIL', 
                             'Qromo_LIL', 
                             'Satispay_LIL', 
@@ -86,6 +131,14 @@ class OrderSummary:
                 pagamenti_columns[metodo] = list(columns)
                 # pagamenti_columns[metodo].append("CHECK")
 
+            lista_ordini = st.session_state.pagamenti["Name"].unique().tolist()
+            for nome in st.session_state.pagamenti_da_aggiungere_lil.values():
+                if nome not in lista_ordini:
+                    lista_ordini.append(nome)
+            for nome in st.session_state.pagamenti_da_aggiungere_agee.values():
+                if nome not in lista_ordini:
+                    lista_ordini.append(nome)
+                        
             # Apply the function to each 'Name' group
             self.df_ordini_all = self.df_ordini_all.groupby('Name', group_keys=False).apply(self.process_group)
 
@@ -122,17 +175,40 @@ class OrderSummary:
 
                 if mask_lil_p.any():
                     for p in self.pagamenti["Metodo"].unique():
+                        print("ppppp", p)
                         payment_name_lil = p.split()[0] + "_LIL"
-                        filtered_df_lil = self.pagamenti[mask_lil_p & (self.pagamenti["Metodo"] == p)]
+
+                        if p == "Cash": 
+                            filtered_df_lil = self.pagamenti[self.pagamenti["Metodo"] == p]
+                        else:
+                            filtered_df_lil = self.pagamenti[mask_lil_p & (self.pagamenti["Metodo"] == p)]
 
                         if not filtered_df_lil.empty:
                             matching_columns = next((cols for key, cols in pagamenti_columns.items() 
-                                                     if key == p), None)
-                
-                            # Filter columns if match found
+                                                    if key == p), None)
+
                             if len(matching_columns) > 0:
-                                filtered_df_lil = filtered_df_lil[matching_columns]
-                            
+                                if p == "Cash":
+                                    filtered_df_lil = filtered_df_lil[matching_columns]
+                                
+                                else:
+                
+                                    if p == "PayPal Express Checkout" or p == "Qromo" or p == "Bonifico":
+                                        desired_columns = matching_columns + ["Numero Pagamento", "Name", "Importo Pagato", "Metodo", "CHECK"]
+                                        filtered_df_lil = filtered_df_lil[desired_columns]
+                                        filtered_df_lil = self.check_names_pagamenti(filtered_df_lil)
+
+                                        filtered_df_lil = filtered_df_lil.drop(["Numero Pagamento", "Importo Pagato", "Metodo"], axis = 1)
+                                    else:
+                                        desired_columns = matching_columns + ["Data", "Numero Pagamento", "Name", "Importo Pagato", "Metodo", "CHECK"]
+                                        filtered_df_lil = filtered_df_lil[desired_columns]
+                                        filtered_df_lil = self.check_names_pagamenti(filtered_df_lil)
+
+                                        filtered_df_lil = filtered_df_lil.drop(["Data", "Numero Pagamento", "Importo Pagato", "Metodo"], axis = 1)
+
+                                    blank_col_index = len(matching_columns)
+                                    filtered_df_lil.insert(blank_col_index, "", "")
+
                             filtered_df_lil.to_excel(writer, sheet_name=payment_name_lil, index=False)
 
                 if mask_agee_p.any():
@@ -146,8 +222,70 @@ class OrderSummary:
 
                             # Filter columns if match found
                             if len(matching_columns) > 0:
-                                filtered_df_agee = filtered_df_agee[matching_columns]
+                                desired_columns = matching_columns + ["Numero Pagamento", "Name", "Importo Pagato", "Metodo", "CHECK"]
+                                filtered_df_agee = filtered_df_agee[desired_columns]
+
+                                filtered_df_agee = self.check_names_pagamenti(filtered_df_agee)
+                                filtered_df_agee = filtered_df_agee.drop(["Numero Pagamento", "Importo Pagato", "Metodo"], axis = 1)
+
+                                blank_col_index = len(matching_columns)
+                                filtered_df_agee.insert(blank_col_index, "", "")
+                    
                             filtered_df_agee.to_excel(writer, sheet_name=payment_name_agee, index=False)
+
+            # Highlight rows where CHECK != 'VERO'
+            wb = load_workbook(self.filename)
+
+            for sheetname in wb.sheetnames:
+
+                # Check the "CHECK" column and highlight rows where the value is not "VERO"
+                check_col = None
+
+                name_col = None
+                total_col = None
+                payment_method_col = None
+                
+                sheet = wb[sheetname]
+
+                for col in sheet.iter_cols(1, sheet.max_column):
+                    if col[0].value == "CHECK":
+                        check_col = col[0].column
+                        break
+
+                if check_col:
+                    for row in sheet.iter_rows(2, sheet.max_row):
+                        if row[check_col - 1].value != "VERO":
+                            for cell in row:
+                                cell.fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+
+                if sheetname.startswith("Ordini"):
+                    for col in sheet.iter_cols(1, sheet.max_column):
+                        if col[0].value == "Name":
+                            name_col = col[0].column
+                        elif col[0].value == "Total":
+                            total_col = col[0].column
+                        elif col[0].value == "Payment Method":
+                            payment_method_col = col[0].column
+
+                        # Break early if all required columns are found
+                        if name_col and total_col and payment_method_col:
+                            break
+
+                    if name_col and total_col and payment_method_col:
+                        # Iterate through all rows starting from the second row (to skip headers)
+                        for row in sheet.iter_rows(2, sheet.max_row):
+                            name_value = row[name_col - 1].value
+                            total_value = row[total_col - 1].value
+                            payment_method_value = row[payment_method_col - 1].value
+
+                            # Check if "Name" is not in lista_ordini, "Total" is not NaN or 0, and "Payment Method" is not "Cash"
+                            if name_value not in lista_ordini and (total_value is not None and total_value != 0 and payment_method_value != "Cash"):
+                                # Highlight the row with yellow
+                                for cell in row:
+                                    cell.fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+            
+            # Save the workbook after all changes
+            wb.save(self.filename)
 
             # Now create the summary tables after all required sheets exist
             self.create_summary_table()  # This creates 'Totale' sheet
@@ -261,6 +399,35 @@ class OrderSummary:
         summary_sheet[f'R{last_row+1}'] = f'=P{last_row+1}/N{last_row+1}'
         summary_sheet[f'R{last_row+1}'].number_format = '0.00'
 
+
+
+            # unique_orders = df['Name']
+            # items_quantity = df['Lineitem quantity']
+            # gioielli_quantity = df['Lineitem quantity gioiello']            
+
+            # summary_sheet[f'N{idx}'] = unique_orders
+            # summary_sheet[f'O{idx}'] = items_quantity
+            # summary_sheet[f'P{idx}'] = gioielli_quantity
+            # summary_sheet[f'Q{idx}'] = f'=O{idx}/N{idx}'
+            # summary_sheet[f'Q{idx}'].number_format = '0.00'
+            # summary_sheet[f'R{idx}'] = f'=P{idx}/N{idx}'
+            # summary_sheet[f'R{idx}'].number_format = '0.00'
+
+            # row = idx
+
+        # Now idx will have a valid value after the loop, even if the list is empty
+        # summary_sheet[f'L{row+1}'] = 'Totale'
+        # summary_sheet[f'L{row+1}'].font = Font(bold=True)
+        # summary_sheet[f'M{row+1}'] = f'=SUM(M{start_row}:M{row})'
+        # summary_sheet[f'M{row+1}'].font = Font(bold=True)
+        # summary_sheet[f'N{row+1}'] = f'=SUM(N{start_row}:N{row})'
+        # summary_sheet[f'O{row+1}'] = f'=SUM(O{start_row}:O{row})'
+        # summary_sheet[f'P{row+1}'] = f'=SUM(P{start_row}:P{row})'
+        # summary_sheet[f'Q{row+1}'] = f'=O{row+1}/N{row+1}'
+        # summary_sheet[f'Q{row+1}'].number_format = '0.00'
+        # summary_sheet[f'R{row+1}'] = f'=P{row+1}/N{row+1}'
+        # summary_sheet[f'R{row+1}'].number_format = '0.00'
+
         return start_row + len(title_of_locations) + 3
 
     # Method to create a summary table in Excel
@@ -286,7 +453,7 @@ class OrderSummary:
 
         title_of_totals = {
             'Scalapay': 'J', 'Shopify': 'I', 'PayPal': 'H', 'Bonifico': 'H',
-            'Qromo': 'F', 'Satispay': 'E', 'Cash': ''
+            'Qromo': 'F', 'Satispay': 'E', 'Cash': 'H'
         }
 
         row = 2
@@ -295,20 +462,7 @@ class OrderSummary:
             summary_sheet[f'C{row}'] = f'=SUMIFS(\'Ordini LIL\'!$M:$M, \'Ordini LIL\'!$AW:$AW, "*{payment_label}*")'
             summary_sheet[f'G{row}'] = f'=IFERROR(SUMIFS(\'Ordini AGEE\'!$M:$M, \'Ordini AGEE\'!$AW:$AW, "*{payment_label}*"), 0)'
             
-            if payment_label == "Cash":
-                summary_sheet[f'D{row}'] = '-'
-                summary_sheet[f'D{row}'].alignment = Alignment(horizontal='center')
-
-                summary_sheet[f'E{row}'] = '-'
-                summary_sheet[f'E{row}'].alignment = Alignment(horizontal='center')
-
-                summary_sheet[f'H{row}'] = '-'
-                summary_sheet[f'H{row}'].alignment = Alignment(horizontal='center')
-                
-                summary_sheet[f'I{row}'] = '-'
-                summary_sheet[f'I{row}'].alignment = Alignment(horizontal='center')
-            
-            elif payment_label == "Qromo":
+            if payment_label == "Qromo":
                 summary_sheet[f'D{row}'] = f'=IFERROR(SUM(\'{payment_label}_LIL\'!C:C) - SUM(\'{payment_label}_LIL\'!D:D), 0)'
                 summary_sheet[f'H{row}'] = f'=IFERROR(SUM(\'{payment_label}_AGEE\'!C:C) - SUM(\'{payment_label}_AGEE\'!D:D), 0)'
                 summary_sheet[f'E{row}'] = f'=D{row}-C{row}'
@@ -346,13 +500,14 @@ class OrderSummary:
         df_lil = self.process_location_df(df_ordini_fill, 'Ordini LIL', exclude_strings)
         df_agee = self.process_location_df(df_ordini_fill, 'Ordini AGEE', exclude_strings)
 
+        print("locccc", df_lil)
+
         start_row = 3
         start_row = self.create_location_stats(df_lil, start_row, summary_sheet, 'LIL')
         if len(df_agee) > 0:
             self.create_location_stats(df_agee, start_row, summary_sheet, 'AGEE')
 
         workbook.save(self.filename)
-
 
 
     # Method to create a daily summary table
@@ -466,3 +621,6 @@ class OrderSummary:
         daily_sheet[f'{total_col_letter}{idx+2}'].font = Font(bold=True)
 
         workbook.save(self.filename)
+
+
+
