@@ -90,7 +90,7 @@ if 'pagamenti_da_aggiungere_agee' not in st.session_state:
     st.session_state.pagamenti_da_aggiungere_agee = {}
 
 # Title of the page
-st.title("Check Pagamenti LIL Milan e AGEE")
+st.title("Check di Pagamenti LIL Milan e AGEE")
 
 # Section for uploading order files
 st.subheader("Caricare almeno un file di ordini")
