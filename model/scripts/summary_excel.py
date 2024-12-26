@@ -23,37 +23,37 @@ class OrderSummary:
         # If values are different, keep them as they are (no changes)
         return group
     
-    # Function to process data for a specific brand
-    def process_location_df(self, df, brand, exclude_strings):
-        df_filtered = df[(df['Brand'] == brand) 
-                        & (df['CHECK'] != 'ESCLUSO') 
-                        & ((df['Total'] != 0) | ((df['Total'] == 0) & (df['Payment Method'] == "Gift Card")))]
+    # # Function to process data for a specific brand
+    # def process_location_df(self, df, brand, exclude_strings):
+    #     df_filtered = df[(df['Brand'] == brand) 
+    #                     & (df['CHECK'] != 'ESCLUSO') 
+    #                     & ((df['Total'] != 0) | ((df['Total'] == 0) & (df['Payment Method'] == "Gift Card")))]
         
-        # Optimize 'Lineitem quantity gioiello' calculation
-        df_filtered['Lineitem quantity gioiello'] = np.where(
-            pd.isna(df_filtered['Lineitem name']) | (~df_filtered['Lineitem name'].str.contains('|'.join(exclude_strings), na=False)),
-            df_filtered['Lineitem quantity'], #if true
-            0 #if false
-        )
+    #     # Optimize 'Lineitem quantity gioiello' calculation
+    #     df_filtered['Lineitem quantity gioiello'] = np.where(
+    #         pd.isna(df_filtered['Lineitem name']) | (~df_filtered['Lineitem name'].str.contains('|'.join(exclude_strings), na=False)),
+    #         df_filtered['Lineitem quantity'], #if true
+    #         0 #if false
+    #     )
         
-        # Calculate 'Lineitem quantity gioiello per name'
-        df_filtered['Lineitem quantity gioiello per name'] = df_filtered.groupby('Name')['Lineitem quantity gioiello'].transform('sum')
+    #     # Calculate 'Lineitem quantity gioiello per name'
+    #     df_filtered['Lineitem quantity gioiello per name'] = df_filtered.groupby('Name')['Lineitem quantity gioiello'].transform('sum')
         
-        # Group by 'Location'
-        group_location = df_filtered.groupby('Location').agg({
-            'Name': 'nunique',
-            'Lineitem quantity': 'sum',
-            'Lineitem quantity gioiello': 'sum'
-        }).reset_index()
+    #     # Group by 'Location'
+    #     group_location = df_filtered.groupby('Location').agg({
+    #         'Name': 'nunique',
+    #         'Lineitem quantity': 'sum',
+    #         'Lineitem quantity gioiello': 'sum'
+    #     }).reset_index()
         
-        # Filter and group names with non-zero gioielli
-        gioielli = df_filtered[df_filtered['Lineitem quantity gioiello per name'] > 0].drop_duplicates('Name')
-        gioielli_count = gioielli.groupby('Location')['Name'].nunique()
-        gioielli_count.name = 'Name solo gioielli'
+    #     # Filter and group names with non-zero gioielli
+    #     gioielli = df_filtered[df_filtered['Lineitem quantity gioiello per name'] > 0].drop_duplicates('Name')
+    #     gioielli_count = gioielli.groupby('Location')['Name'].nunique()
+    #     gioielli_count.name = 'Name solo gioielli'
         
-        # Merge the results
-        result = pd.merge(group_location, gioielli_count, on='Location', how='left').fillna(0)
-        return result
+    #     # Merge the results
+    #     result = pd.merge(group_location, gioielli_count, on='Location', how='left').fillna(0)
+    #     return result
 
     def check_names_pagamenti(self, df_pagamenti):
 
@@ -101,6 +101,10 @@ class OrderSummary:
 
 
     def create_files(self):
+
+        # Define exclude strings
+        exclude_strings = ["Luxury Pack", "Engraving", "E-Gift", "Repair", "Whatever Tote", "Piercing Party", "LIL Bag"]
+
         try:
             sheet_order = ['Totale',           # First summary sheet
                             'Totale_daily',     # Daily summary sheet
@@ -123,9 +127,11 @@ class OrderSummary:
 
             # columns_state = ColumnsState.get_instance()
             paid_at_pos = st.session_state.df_columns.get_loc('Paid at')
+            created_at_pos = st.session_state.df_columns.get_loc('Created at')
             df_columns = list(st.session_state.df_columns)
+            df_columns.insert(created_at_pos + 1, 'Lineitem gioiello')
             df_columns.insert(paid_at_pos + 1, 'Data Giorno')
-
+            
             pagamenti_columns = st.session_state.pagamenti_columns
             for metodo, columns in pagamenti_columns.items():
                 pagamenti_columns[metodo] = list(columns)
@@ -150,20 +156,36 @@ class OrderSummary:
                 # Write order sheets first (these are needed for the summary tables)
                 if mask_lil_o.any():
                     lil = self.df_ordini_all[mask_lil_o].copy()
+                     
+                    # Create "Lineitem gioiello" column based on condition
+                    created_at_index = lil.columns.get_loc("Created at")
+                    lil.insert(created_at_index + 1, "Lineitem gioiello", lil["Lineitem name"].apply(
+                        lambda x: False if any(exclude.lower() in x.lower() for exclude in exclude_strings) else True
+                    ))
+
+                    # Create "Data Giorno" column
                     paid_at_index = lil.columns.get_loc("Paid at")
                     lil.insert(paid_at_index + 1, "Data Giorno", lil["Paid at"].apply(self.reformat_date))
-                    # lil = lil[lil.columns[: lil.columns.get_loc('Brand') + 1]]
-                    lil = lil[df_columns]
 
+                    print("vediamo se funziona")
+                    
+                    # Filter columns to keep only the desired ones
+                    lil = lil[df_columns]
+                    
                     # Write to Excel
                     lil.to_excel(writer, sheet_name='Ordini LIL', index=False)
 
                 if mask_agee_o.any():
-                    agee = self.df_ordini_all[mask_agee_o]
+                    agee = self.df_ordini_all[mask_agee_o].copy()
+
+                    created_at_index = agee.columns.get_loc("Created at")
+                    agee.insert(created_at_index + 1, "Lineitem gioiello", agee["Lineitem name"].apply(
+                        lambda x: False if any(exclude.lower() in x.lower() for exclude in exclude_strings) else True
+                    ))
                 
                     paid_at_index = agee.columns.get_loc("Paid at")
                     agee.insert(paid_at_index + 1, "Data Giorno", agee["Paid at"].apply(self.reformat_date))
-                    # agee = agee[agee.columns[: agee.columns.get_loc('Brand') + 1]]
+
                     agee = agee[df_columns]
 
                     # Write to Excel
@@ -341,16 +363,36 @@ class OrderSummary:
 
  
     # Method to create stats for each store location
-    def create_location_stats(self, df, start_row, summary_sheet, store_name):
+    def create_location_stats(self, wb, start_row, summary_sheet, store_name):
 
-        df['Lineitem quantity'] = df['Lineitem quantity'].astype(int)
-        df['Lineitem quantity gioiello'] = df['Lineitem quantity gioiello'].astype(int)
-        # location_stats = df.groupby('Location').agg({'Name': 'nunique',
-        #                                              'Lineitem quantity': 'sum'}).reset_index()
-        # stats_dict = location_stats.set_index('Location').to_dict()
+        # df['Lineitem quantity'] = df['Lineitem quantity'].astype(int)
+        # df['Lineitem quantity gioiello'] = df['Lineitem quantity gioiello'].astype(int)
+        # # # location_stats = df.groupby('Location').agg({'Name': 'nunique',
+        # # #                                              'Lineitem quantity': 'sum'}).reset_index()
+        # # # stats_dict = location_stats.set_index('Location').to_dict()
 
-        # Get unique locations in the desired order
-        title_of_locations = df["Location"].unique()
+        # # # Get unique locations in the desired order
+        if store_name == "LIL":
+            title_of_locations = ["Firgun House", "LIL House", "LIL House London"]
+        else:
+            # Check if 'Ordini AGEE' sheet exists
+            if 'Ordini AGEE' in wb.sheetnames:
+                title_of_locations = ["Firgun House", "LIL House"]
+            else:
+                print("Sheet 'Ordini AGEE' does not exist, breaking the process.")
+                return  # This will stop the code execution
+
+        # Get unique values from 'Ordini LIL' sheet in column AX
+        ordini_sheet = wb['Ordini ' + store_name]  # Load the 'Ordini LIL' sheet
+        print(ordini_sheet)
+        locations_sheet = [cell.value for cell in ordini_sheet['BD'] if cell.value is not None]
+        print(locations_sheet)
+        unique_locations_sheet = set(locations_sheet)
+        print(unique_locations_sheet)
+
+        locations = [location for location in unique_locations_sheet if location in title_of_locations]
+        locations.sort()
+        print(locations, "locations")
 
         # Prepare the summary sheet
         summary_sheet.merge_cells(f'L{start_row-1}:R{start_row-1}') 
@@ -359,31 +401,46 @@ class OrderSummary:
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal='center', vertical='center')
 
-        # Group the DataFrame by Location to ensure data alignment
-        grouped_df = df.groupby("Location")
+        # # Group the DataFrame by Location to ensure data alignment
+        # grouped_df = df.groupby("Location")
 
-        # Iterate over the unique locations
-        for idx, location_label in enumerate(title_of_locations, start=start_row):
-            # Write the location name
-            summary_sheet[f'L{idx}'] = location_label
+        # # Iterate over the unique locations
+        # for idx, location_label in enumerate(title_of_locations, start=start_row):
+        #     # Write the location name
+        #     
 
-            # Add formula for total quantity based on the location
-            summary_sheet[f'M{idx}'] = (
-                f'=SUMIFS(\'Ordini {store_name}\'!$M:$M, '
-                f'\'Ordini {store_name}\'!$BC:$BC, "{location_label}")'
-            )
+        #     # Add formula for total quantity based on the location
+        
 
-            # Retrieve corresponding data for the location
-            location_data = grouped_df.get_group(location_label) if location_label in grouped_df.groups else None
-            if location_data is not None:
+        #     # Retrieve corresponding data for the location
+        #     location_data = grouped_df.get_group(location_label) if location_label in grouped_df.groups else None
+        #     if location_data is not None:
                 # Fill in the data
-                summary_sheet[f'N{idx}'] = location_data["Name"].iloc[0]  # Assuming a single value per location
-                summary_sheet[f'O{idx}'] = location_data["Lineitem quantity"].iloc[0]
-                summary_sheet[f'P{idx}'] = location_data["Lineitem quantity gioiello"].iloc[0]
-                summary_sheet[f'Q{idx}'] = f'=O{idx}/N{idx}'
-                summary_sheet[f'Q{idx}'].number_format = '0.00'
-                summary_sheet[f'R{idx}'] = f'=P{idx}/N{idx}'
-                summary_sheet[f'R{idx}'].number_format = '0.00'
+        for idx, location_label in enumerate(locations, start=start_row):
+            summary_sheet[f'L{idx}'] = location_label
+            summary_sheet[f'M{idx}'] = f'=SUMIFS(\'Ordini {store_name}\'!$M:$M, \'Ordini {store_name}\'!$BD:$BD, $L{idx})'
+            summary_sheet[f'N{idx}'] = (f'=SUMPRODUCT(((\'Ordini {store_name}\'!$M:$M > 0) + ((\'Ordini {store_name}\'!$M:$M = 0) * (\'Ordini {store_name}\'!$AX:$AX = "Gift Card"))) *'
+                                        f'(\'Ordini {store_name}\'!$BD:$BD = $L{idx}))')
+            summary_sheet[f'O{idx}'] = (f'=SUMPRODUCT(((\'Ordini {store_name}\'!$M$2:$M$20000 > 0) +' 
+                                            f'(\'Ordini {store_name}\'!$M$2:$M$20000 = "") +'
+                                            f'((\'Ordini {store_name}\'!$M$2:$M$20000 = 0) * (\'Ordini {store_name}\'!$AX$2:$AX$20000 = "Gift Card")) > 0) *'
+                                        f'(\'Ordini {store_name}\'!$BD$2:$BD$20000 = $L{idx}) *'
+                                        f'(\'Ordini {store_name}\'!$S$2:$S$20000 > 0) *'
+                                        f'(\'Ordini {store_name}\'!$S$2:$S$20000) *'
+                                        f'(ISERROR(SEARCH("100", \'Ordini {store_name}\'!$N$2:$N$20000))))')
+            summary_sheet[f'P{idx}'] = (f'=SUMPRODUCT(((\'Ordini {store_name}\'!$M$2:$M$20000 > 0) +'
+                                            f'(\'Ordini {store_name}\'!$M$2:$M$20000 = "") +'
+                                            f'((\'Ordini {store_name}\'!$M$2:$M$20000 = 0) * (\'Ordini {store_name}\'!$AX$2:$AX$20000 = "Gift Card")) > 0) *'
+                                        f'(\'Ordini {store_name}\'!$R$2:$R20000 = TRUE) *'
+                                        f'(\'Ordini {store_name}\'!$BD$2:$BD$20000 = $L{idx}) *'
+                                        f'(\'Ordini {store_name}\'!$S$2:$S$20000 > 0) *'
+                                        f'(\'Ordini {store_name}\'!$S$2:$S$20000) *'
+                                        f'(ISERROR(SEARCH("100", \'Ordini {store_name}\'!$N$2:$N$20000))))')
+            summary_sheet[f'Q{idx}'] = f'=O{idx}/N{idx}'
+            summary_sheet[f'Q{idx}'].number_format = '0.00'
+            summary_sheet[f'R{idx}'] = f'=P{idx}/N{idx}'
+            summary_sheet[f'R{idx}'].number_format = '0.00'
+
 
             last_row = idx
 
@@ -400,35 +457,7 @@ class OrderSummary:
         summary_sheet[f'R{last_row+1}'].number_format = '0.00'
 
 
-
-            # unique_orders = df['Name']
-            # items_quantity = df['Lineitem quantity']
-            # gioielli_quantity = df['Lineitem quantity gioiello']            
-
-            # summary_sheet[f'N{idx}'] = unique_orders
-            # summary_sheet[f'O{idx}'] = items_quantity
-            # summary_sheet[f'P{idx}'] = gioielli_quantity
-            # summary_sheet[f'Q{idx}'] = f'=O{idx}/N{idx}'
-            # summary_sheet[f'Q{idx}'].number_format = '0.00'
-            # summary_sheet[f'R{idx}'] = f'=P{idx}/N{idx}'
-            # summary_sheet[f'R{idx}'].number_format = '0.00'
-
-            # row = idx
-
-        # Now idx will have a valid value after the loop, even if the list is empty
-        # summary_sheet[f'L{row+1}'] = 'Totale'
-        # summary_sheet[f'L{row+1}'].font = Font(bold=True)
-        # summary_sheet[f'M{row+1}'] = f'=SUM(M{start_row}:M{row})'
-        # summary_sheet[f'M{row+1}'].font = Font(bold=True)
-        # summary_sheet[f'N{row+1}'] = f'=SUM(N{start_row}:N{row})'
-        # summary_sheet[f'O{row+1}'] = f'=SUM(O{start_row}:O{row})'
-        # summary_sheet[f'P{row+1}'] = f'=SUM(P{start_row}:P{row})'
-        # summary_sheet[f'Q{row+1}'] = f'=O{row+1}/N{row+1}'
-        # summary_sheet[f'Q{row+1}'].number_format = '0.00'
-        # summary_sheet[f'R{row+1}'] = f'=P{row+1}/N{row+1}'
-        # summary_sheet[f'R{row+1}'].number_format = '0.00'
-
-        return start_row + len(title_of_locations) + 3
+        return start_row + len(locations) + 3
 
     # Method to create a summary table in Excel
     def create_summary_table(self):
@@ -459,8 +488,8 @@ class OrderSummary:
         row = 2
         for payment_label, payment_amount in title_of_totals.items():
             summary_sheet[f'A{row}'] = payment_label
-            summary_sheet[f'C{row}'] = f'=SUMIFS(\'Ordini LIL\'!$M:$M, \'Ordini LIL\'!$AW:$AW, "*{payment_label}*")'
-            summary_sheet[f'G{row}'] = f'=IFERROR(SUMIFS(\'Ordini AGEE\'!$M:$M, \'Ordini AGEE\'!$AW:$AW, "*{payment_label}*"), 0)'
+            summary_sheet[f'C{row}'] = f'=SUMIFS(\'Ordini LIL\'!$M:$M, \'Ordini LIL\'!$AX:$AX, "*{payment_label}*")'
+            summary_sheet[f'G{row}'] = f'=IFERROR(SUMIFS(\'Ordini AGEE\'!$M:$M, \'Ordini AGEE\'!$AX:$AX, "*{payment_label}*"), 0)'
             
             if payment_label == "Qromo":
                 summary_sheet[f'D{row}'] = f'=IFERROR(SUM(\'{payment_label}_LIL\'!C:C) - SUM(\'{payment_label}_LIL\'!D:D), 0)'
@@ -489,26 +518,24 @@ class OrderSummary:
             cell.value = value
             cell.font = bold_font
 
-        # Apply to both brands
-        exclude_strings = ["Luxury Pack", "Engraving", "E-Gift", "Repair", "Whatever Tote", "Piercing Party", "LIL Bag"]
+        # # Apply to both brands
+        # exclude_strings = ["Luxury Pack", "Engraving", "E-Gift", "Repair", "Whatever Tote", "Piercing Party", "LIL Bag"]
 
-        # Sort and fill Total
-        df_ordini_fill = self.df_ordini_all.sort_values(by=['Name', "Total"])
-        df_ordini_fill["Total"] = df_ordini_fill.groupby('Name')["Total"].ffill()
+        # # Sort and fill Total
+        # df_ordini_fill = self.df_ordini_all.sort_values(by=['Name', "Total"])
+        # df_ordini_fill["Total"] = df_ordini_fill.groupby('Name')["Total"].ffill()
 
-        # Process LIL and AGEE data
-        df_lil = self.process_location_df(df_ordini_fill, 'Ordini LIL', exclude_strings)
-        df_agee = self.process_location_df(df_ordini_fill, 'Ordini AGEE', exclude_strings)
+        # # Process LIL and AGEE data
+        # df_lil = self.process_location_df(df_ordini_fill, \'Ordini {store_name}\', exclude_strings)
+        # df_agee = self.process_location_df(df_ordini_fill, 'Ordini AGEE', exclude_strings)
 
-        print("locccc", df_lil)
+        # print("locccc", df_lil)
 
         start_row = 3
-        start_row = self.create_location_stats(df_lil, start_row, summary_sheet, 'LIL')
-        if len(df_agee) > 0:
-            self.create_location_stats(df_agee, start_row, summary_sheet, 'AGEE')
+        start_row = self.create_location_stats(workbook, start_row, summary_sheet, 'LIL')
+        self.create_location_stats(workbook, start_row, summary_sheet, 'AGEE')
 
         workbook.save(self.filename)
-
 
     # Method to create a daily summary table
     def create_daily_summary_table(self):
@@ -573,9 +600,9 @@ class OrderSummary:
         # Start filling the first column (A) with these unique dates, beginning at row 2
         for row, giorno in enumerate(unique_dates, start=2):
             daily_sheet[f'A{row}'] = giorno
-            daily_sheet[f'B{row}'] = f"=SUMIFS('Ordini LIL'!$AY:$AY, 'Ordini LIL'!$E:$E, A{row})"
-            daily_sheet[f'C{row}'] = f"=SUMIFS('Ordini LIL'!$M:$M, 'Ordini LIL'!$E:$E, A{row}) + SUMIFS('Ordini LIL'!$AY:$AY, 'Ordini LIL'!$E:$E, A{row})"
-            daily_sheet[f'E{row}'] = f"=SUMIFS('Ordini LIL'!$M:$M, 'Ordini LIL'!$E:$E, A{row})"
+            daily_sheet[f'B{row}'] = f"=SUMIFS(\'Ordini LIL\'!$AZ:$AZ, \'Ordini LIL\'!$E:$E, A{row})"
+            daily_sheet[f'C{row}'] = f"=SUMIFS(\'Ordini LIL\'!$M:$M, \'Ordini LIL\'!$E:$E, A{row}) + SUMIFS(\'Ordini LIL\'!$AZ:$AZ, \'Ordini LIL\'!$E:$E, A{row})"
+            daily_sheet[f'E{row}'] = f"=SUMIFS(\'Ordini LIL\'!$M:$M, \'Ordini LIL\'!$E:$E, A{row})"
 
             #eu contries
             i = 0
@@ -583,12 +610,12 @@ class OrderSummary:
                 if country in ue_countries:
                     col_letter = chr(64 + start_col + i)  # Convert to Excel column letter
                     print(country)
-                    daily_sheet[f'{col_letter}{row}'] = f"=SUMIFS('Ordini LIL'!$M:$M, 'Ordini LIL'!$E:$E, $A{row}, 'Ordini LIL'!$AR:$AR, {col_letter}$1)" 
-                    print(f"=SUMIFS('Ordini LIL'!$M:$M, 'Ordini LIL'!$E:$E, $A{row}, 'Ordini LIL'!$AR:$AR, {col_letter}$1)" )
+                    daily_sheet[f'{col_letter}{row}'] = f"=SUMIFS(\'Ordini LIL\'!$M:$M, \'Ordini LIL\'!$E:$E, $A{row}, \'Ordini LIL\'!$AS:$AS, {col_letter}$1)" 
+                    print(f"=SUMIFS(\'Ordini LIL\'!$M:$M, \'Ordini LIL\'!$E:$E, $A{row}, \'Ordini LIL\'!$AS:$AS, {col_letter}$1)" )
                     i += 1
         
             # ART8 countries
-            final_formula = " + ".join([f'SUMIFS(\'Ordini LIL\'!$M:$M, \'Ordini LIL\'!$E:$E, $A{row}, \'Ordini LIL\'!$AR:$AR, \"{country}\")' for country in art8_countries])
+            final_formula = " + ".join([f'SUMIFS(\'Ordini LIL\'!$M:$M, \'Ordini LIL\'!$E:$E, $A{row}, \'Ordini LIL\'!$AS:$AS, \"{country}\")' for country in art8_countries])
             daily_sheet[f'{col_letter_art8}{row}'] = f"={final_formula}"
             print(f"={final_formula}")
 
