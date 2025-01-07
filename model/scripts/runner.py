@@ -30,25 +30,30 @@ class MatcherRunner:
         fill_columns = ["Subtotal", "Shipping", "Total", "Discount Amount", "Refunded Amount", "Outstanding Balance"]
         self.df_ordini_all[fill_columns] = self.df_ordini_all[fill_columns].fillna(0)
         
-        colonne_non_na = ["Name", "Paid at", "Lineitem quantity", "Lineitem name", "Lineitem price", "Lineitem sku", 
+        colonne_non_na = ["Name", "Paid at", "Lineitem quantity", "Lineitem name", "Lineitem price", 
                         "Payment Method", "Location", "Shipping Country", "Payment References"]
         
         exclude_strings = ["Luxury Pack", "Engraving", "E-gift", "Repair", "Whatever Tote", "Piercing Party", "LIL Bag"]
         
-        rilevanti = self.df_ordini_all[(self.df_ordini_all["CHECK"] != "ESCLUSO")]["Name"].unique()
-
-        mask_rilevanti = self.df_ordini_all["Name"].isin(rilevanti)
-        nan_mask = self.df_ordini_all[mask_rilevanti][colonne_non_na].isna().any(axis=1)
-        check_mask = (self.df_ordini_all["CHECK"] == "VERO")
+        # 1. Names with CHECK == "VERO"
+        names_veri = self.df_ordini_all[self.df_ordini_all["CHECK"] == "VERO"]["Name"].unique()
         
-        total_names =  self.df_ordini_all[(self.df_ordini_all["Total"] != 0)]["Name"].unique() 
-        total_mask = self.df_ordini_all["Name"].isin(total_names)
+        # 2. Names with at least one NaN in `colonne_non_na`
+        nan_names = self.df_ordini_all[self.df_ordini_all[colonne_non_na].isna().any(axis=1)]["Name"].unique()
+        
+        # 3. Names with at least one row where Total != 0 and Total is not NaN
+        total_names = self.df_ordini_all[(self.df_ordini_all["Total"] != 0) & (~self.df_ordini_all["Total"].isna())]["Name"].unique()
+        
+        # 4. Names with at least one row where Lineitem name does not contain any of the exclude_strings
+        gioelli_names = self.df_ordini_all[~self.df_ordini_all['Lineitem name'].str.contains('|'.join(exclude_strings), case=False, na=False)]["Name"].unique()
 
-        gioelli_mask = ~self.df_ordini_all["Lineitem name"].isin(exclude_strings)
-
-        final_mask = mask_rilevanti & nan_mask & check_mask & total_mask & gioelli_mask
-        self.df_ordini_all.loc[final_mask, "CHECK"] = "VALORE NAN"
-            
+        # Combine all conditions: Find names satisfying all criteria
+        final_names = set(names_veri) & set(nan_names) & set(total_names) & set(gioelli_names)
+        
+        # Apply CHECK = "VALORE NAN" to all rows with the selected names
+        self.df_ordini_all.loc[self.df_ordini_all["Name"].isin(final_names), "CHECK"] = "VALORE NAN"
+        print("nanna", self.df_ordini_all[self.df_ordini_all["Lineitem name"] == "Piercing Party"]["CHECK"])
+        
         return self.df_ordini_all
 
 
@@ -117,6 +122,19 @@ class MatcherRunner:
         self.df_ordini_all.loc[mask, "CHECK"] = "LONDON"
 
         return self.df_ordini_all
+    
+    #NON LA CHIAMO MAI
+    def handle_fattura100(self):
+
+        # Mask for rows where SHipping Country is GB
+        mask = ((self.df_ordini_all["Notes"].str.contains("Fattura", case=False, na= False)) \
+                | (self.df_ordini_all["Discount Code"].str.contains("Fattura100%", case=False, na= False)) & (self.df_ordini_all["Total"] != 0)) \
+                & (self.df_ordini_all["CHECK"] == "VERO")
+        
+        # Update the "CHECK" column to "LONDON" where the condition is true
+        self.df_ordini_all.loc[mask, "CHECK"] = "FATTURA"
+
+        return self.df_ordini_all
 
 
     def run_all_matchers(self, mese, anno):
@@ -154,7 +172,7 @@ class MatcherRunner:
             self.df_ordini_all = pd.concat([df_ordini, unmatched_rows], ignore_index=True)
             
             self.df_ordini_all = self.df_ordini_all.drop_duplicates() #(subset=['Name', 'Lineitem name'])
-            self.df_ordini_all['CHECK'] = self.df_ordini_all['CHECK'].fillna("NON TROVATO")
+            # self.df_ordini_all['CHECK'] = self.df_ordini_all['CHECK'].fillna("NON TROVATO")
             self.df_ordini_all.loc[(self.df_ordini_all['Importo Pagato'].isna()), "Importo Pagato"] = 0
             
 
@@ -180,6 +198,7 @@ class MatcherRunner:
             self.df_ordini_all['Total'] = self.df_ordini_all.groupby('Name')['Total'].transform(lambda x: x.where(x.index == x.index.min(), np.nan))
 
             # self.df_ordini_all.to_excel("ordini.xlsx")
+            print("paggg", df_pagamenti[df_pagamenti["N° ordine commerciante"] == "ra67nFAe7oNLEGo6q3GAvTyUY"][["Name", "CHECK", "Importo Pagato"]])
 
             return self.df_ordini_all, df_pagamenti, self.columns
         
