@@ -187,7 +187,16 @@ class MatcherRunner:
 
             subset_columns = self.df_ordini_all.columns[:self.df_ordini_all.columns.get_loc("Payment References") + 2]
 
-            self.df_ordini_all = self.df_ordini_all.sort_values('CHECK', key=lambda x: x.map(lambda v: 0 if v == 'VERO' else 1 if v.startswith('VALUTA') else 2 if v == 'FALSO' else 3))
+            # self.df_ordini_all = self.df_ordini_all.sort_values('CHECK', key=lambda x: x.map(lambda v: 0 if v == 'VERO' else 1 if v.startswith('VALUTA') else 2 if v == 'FALSO' else 3))
+            # Apply the sorting logic to the 'CHECK' column
+            self.df_ordini_all = self.df_ordini_all.sort_values('CHECK', key=lambda x: x.map(
+                lambda v: 0 if v == 'VERO' 
+                else 1 if isinstance(v, str) and v.startswith('VALUTA') 
+                else 2 if v == 'FALSO' 
+                else 3 if pd.notna(v)  # Check if the value is not NaN
+                else 4  # Handle NaN values here
+            ))
+
             self.df_ordini_all = self.df_ordini_all.drop_duplicates(subset=subset_columns, keep='first')
 
             self.df_ordini_all = self.handle_nan()
