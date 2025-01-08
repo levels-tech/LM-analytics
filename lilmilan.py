@@ -1277,7 +1277,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
 ################### pagamenti
 
-    proceed_pagamenti = count_ordini >= len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
+    proceed_pagamenti = count_ordini >= 0 #len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
 
     if proceed_pagamenti:  # Or your specific condition for moving to the next section
         section_placeholder.empty()  # Clears all contents of the placeholder
@@ -1668,7 +1668,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
             st.subheader("Nessun pagamento deve essere controllato")
                         
 ####EXCEL            
-        proceed_excel = count_pagamenti >= len(p) 
+        proceed_excel = count_pagamenti >= 0 #len(p) 
 
         if proceed_excel:
             
