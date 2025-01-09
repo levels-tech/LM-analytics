@@ -57,7 +57,8 @@ class OrderSummary:
 
     def check_names_pagamenti(self, df_pagamenti):
 
-        df_pagamenti = df_pagamenti.sort_values(by = "Data")
+        print(df_pagamenti.columns)
+        # df_pagamenti = df_pagamenti.sort_values(by = "Data")
         grouped_pagamenti = (df_pagamenti.groupby("Name", as_index=False).agg({"Importo Pagato": "sum",  # Sum over 'Importo Pagato'
                                                                                 "Numero Pagamento": "first",   # Take the first value of 'description'
                                                                                 "Metodo": "first"
@@ -416,6 +417,7 @@ class OrderSummary:
         #     location_data = grouped_df.get_group(location_label) if location_label in grouped_df.groups else None
         #     if location_data is not None:
                 # Fill in the data
+        last_row = None
         for idx, location_label in enumerate(locations, start=start_row):
             summary_sheet[f'L{idx}'] = location_label
             summary_sheet[f'M{idx}'] = f'=SUMIFS(\'Ordini {store_name}\'!$M:$M, \'Ordini {store_name}\'!$BD:$BD, $L{idx})'
@@ -444,17 +446,18 @@ class OrderSummary:
 
             last_row = idx
 
-        summary_sheet[f'L{last_row+1}'] = 'Totale'
-        summary_sheet[f'L{last_row+1}'].font = Font(bold=True)
-        summary_sheet[f'M{last_row+1}'] = f'=SUM(M{start_row}:M{last_row})'
-        summary_sheet[f'M{last_row+1}'].font = Font(bold=True)
-        summary_sheet[f'N{last_row+1}'] = f'=SUM(N{start_row}:N{last_row})'
-        summary_sheet[f'O{last_row+1}'] = f'=SUM(O{start_row}:O{last_row})'
-        summary_sheet[f'P{last_row+1}'] = f'=SUM(P{start_row}:P{last_row})'
-        summary_sheet[f'Q{last_row+1}'] = f'=O{last_row+1}/N{last_row+1}'
-        summary_sheet[f'Q{last_row+1}'].number_format = '0.00'
-        summary_sheet[f'R{last_row+1}'] = f'=P{last_row+1}/N{last_row+1}'
-        summary_sheet[f'R{last_row+1}'].number_format = '0.00'
+        if last_row is not None:
+            summary_sheet[f'L{last_row+1}'] = 'Totale'
+            summary_sheet[f'L{last_row+1}'].font = Font(bold=True)
+            summary_sheet[f'M{last_row+1}'] = f'=SUM(M{start_row}:M{last_row})'
+            summary_sheet[f'M{last_row+1}'].font = Font(bold=True)
+            summary_sheet[f'N{last_row+1}'] = f'=SUM(N{start_row}:N{last_row})'
+            summary_sheet[f'O{last_row+1}'] = f'=SUM(O{start_row}:O{last_row})'
+            summary_sheet[f'P{last_row+1}'] = f'=SUM(P{start_row}:P{last_row})'
+            summary_sheet[f'Q{last_row+1}'] = f'=O{last_row+1}/N{last_row+1}'
+            summary_sheet[f'Q{last_row+1}'].number_format = '0.00'
+            summary_sheet[f'R{last_row+1}'] = f'=P{last_row+1}/N{last_row+1}'
+            summary_sheet[f'R{last_row+1}'].number_format = '0.00'
 
 
         return start_row + len(locations) + 3
