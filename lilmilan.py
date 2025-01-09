@@ -3,6 +3,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import pickle
 
 # Your original imports should work now
 from model.scripts.call_streamlit import run, update_df, check_files, missing_fields, add_row, aggiungi_pagamenti, generate_excel
@@ -32,6 +33,46 @@ def get_nomi(df, nome_ordine):
     else:
         return False, 0
 
+# # Function to save the session state for a specific phase
+# def save_phase_state(phase):
+#     data_to_save = {}
+    
+#     # Phase 1
+#     if phase == "ordini":
+#         data_to_save['pagamenti_da_aggiungere_agee'] = st.session_state.get('pagamenti_da_aggiungere_agee', {})
+#         data_to_save['pagamenti_da_aggiungere_lil'] = st.session_state.get('pagamenti_da_aggiungere_lil', {})
+#         data_to_save['pagamenti'] = st.session_state.get('pagamenti', pd.DataFrame())
+#         data_to_save['processed_data'] = st.session_state.get('processed_data', pd.DataFrame())
+#         data_to_save['saved_updates'] = st.session_state.get('saved_updates', [])
+    
+#     # Phase 2
+#     elif phase == "pagamenti":
+#         data_to_save['pagamenti'] = st.session_state.get('pagamenti', pd.DataFrame())
+#         data_to_save['processed_data'] = st.session_state.get('processed_data', pd.DataFrame())
+#         data_to_save['saved_updates'] = st.session_state.get('saved_updates', [])
+    
+#     # Convert data to binary stream for downloading
+#     return pickle.dumps(data_to_save)
+
+# # Function to load the session state from an uploaded file
+# def load_phase_state(uploaded_file):
+#     if uploaded_file is not None:
+#         data = pickle.load(uploaded_file)
+        
+#         # Restore data into session state
+#         st.session_state['pagamenti_da_aggiungere_agee'] = data.get('pagamenti_da_aggiungere_agee', {})
+#         st.session_state['pagamenti_da_aggiungere_lil'] = data.get('pagamenti_da_aggiungere_lil', {})
+#         st.session_state['pagamenti'] = data.get('pagamenti', pd.DataFrame())
+#         st.session_state['processed_data'] = data.get('processed_data', pd.DataFrame())
+#         st.session_state['saved_updates'] = data.get('saved_updates', [])
+        
+#         st.success("Dati caricati con successo!")
+
+
+# # Upload file to restore state
+# uploaded_file = st.file_uploader("Upload Saved State", type="pkl")
+# if uploaded_file is not None:
+#     load_phase_state(uploaded_file)
 
 st.set_page_config(layout="wide")
 
@@ -1275,9 +1316,18 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
         st.subheader("Nessun ordine di AGEE deve essere controllato")
 
 
+    # # Save button with download option
+    # if st.button("Salvare le modifiche finora apportate"):
+    #     data = save_phase_state("ordini")
+    #     st.download_button(
+    #         label="Download le modifiche",
+    #         data=data,
+    #         file_name="salvataggio_modifiche.pkl",
+    #         mime="application/octet-stream",
+    #     )
 ################### pagamenti
 
-    proceed_pagamenti = count_ordini >= 0 #len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
+    proceed_pagamenti = count_ordini >= len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
 
     if proceed_pagamenti:  # Or your specific condition for moving to the next section
         section_placeholder.empty()  # Clears all contents of the placeholder
@@ -1666,6 +1716,15 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     
         else:
             st.subheader("Nessun pagamento deve essere controllato")
+    # # Save button with download option
+    # if st.button("Salvare le modifiche finora apportate"):
+    #     data = save_phase_state("pagamenti")
+    #     st.download_button(
+    #         label="Download le modifiche",
+    #         data=data,
+    #         file_name="salvataggio_modifiche.pkl",
+    #         mime="application/octet-stream",
+    #     )
                         
 ####EXCEL            
         proceed_excel = count_pagamenti >= 0 #len(p) 
