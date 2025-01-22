@@ -68,24 +68,24 @@ def check_files(file, name, mese, anno):
         
     
         
-def run(file_o, file_p, mese, anno):
+def run(order_files, payment_files, month, year):
     #ordini
     print("ordini iniziati")
-    ordini_processor = Ordini(file_o, mese=mese, anno=anno)
+    ordini_processor = Ordini(order_files, mese=month, anno=year)
     ordini, df_columns = ordini_processor.preprocess() 
     print("ordini finiti")
 
-    st.session_state.df_columns = df_columns
+    # st.session_state.df_columns = df_columns
 
     try:
         #run matchers
-        shopify_matcher = ShopifyMatcher(file_p, df_ordini=ordini)
-        scalapay_matcher = ScalapayMatcher(file_p, df_ordini=ordini)
-        paypal_matcher = PaypalMatcher(file_p, df_ordini=ordini)
-        qromo_matcher = QromoMatcher(file_p, df_ordini=ordini)
-        satispay_matcher = SatispayMatcher(file_p, df_ordini=ordini)
-        bonifico_matcher = BonificoMatcher(file_p, df_ordini=ordini)
-        cash_matcher = CashMatcher(file_p, df_ordini=ordini)
+        shopify_matcher = ShopifyMatcher(payment_files, df_ordini=ordini)
+        scalapay_matcher = ScalapayMatcher(payment_files, df_ordini=ordini)
+        paypal_matcher = PaypalMatcher(payment_files, df_ordini=ordini)
+        qromo_matcher = QromoMatcher(payment_files, df_ordini=ordini)
+        satispay_matcher = SatispayMatcher(payment_files, df_ordini=ordini)
+        bonifico_matcher = BonificoMatcher(payment_files, df_ordini=ordini)
+        cash_matcher = CashMatcher(payment_files, df_ordini=ordini)
 
         # Create the matchers list
         matchers = [
@@ -101,8 +101,8 @@ def run(file_o, file_p, mese, anno):
         runner = MatcherRunner(matchers, ordini)
         print("Runner created")
         
-        result, pagamenti, pagamenti_columns = runner.run_all_matchers(mese, anno)
-        st.session_state.pagamenti_columns = pagamenti_columns
+        result, pagamenti, pagamenti_columns = runner.run_all_matchers(month, year)
+        # st.session_state.pagamenti_columns = pagamenti_columns
 
         return result, pagamenti
     
@@ -111,6 +111,8 @@ def run(file_o, file_p, mese, anno):
         raise e
 
 
+## Controlla che "Paid at", "Shipping Country", "Location" e "Lineitem sku" non siano NaN
+## Controlla che "Payment Method" non contenga "+" 
 def missing_fields(df, nome, exclude):
     to_check = []
     to_change = []
@@ -123,10 +125,16 @@ def missing_fields(df, nome, exclude):
         to_check.append("Shipping Country")
     if filtered_df["Location"].isna().all():
         to_check.append("Location")
+
+    # Check for "+" in Payment Method if it's not a Gift Card
     if filtered_df["Payment Method"].str.contains(r'\+').all() & (~filtered_df["Payment Method"].str.contains("Gift Card").all()):
         to_change.append("Payment Method")
+
+    # Check for Payment Method containing multiple "+" signs
     if filtered_df["Payment Method"].str.count(r'\+').ge(2).all():
         to_change.append("Payment Method")
+    
+    # Check for NaN values in "Lineitem sku" if the item is not among the excluded items 
     if filtered_df["Lineitem sku"].isna().any():
         rows_with_nan_sku = filtered_df[filtered_df["Lineitem sku"].isna()]
         if ~rows_with_nan_sku['Lineitem name'].str.contains('|'.join(exclude), case=False, na=False).all():

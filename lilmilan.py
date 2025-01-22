@@ -10,12 +10,12 @@ from model.scripts.call_streamlit import run, update_df, check_files, missing_fi
 from model.utils.exceptions import DateMismatchError
 
 
-def check_all_updates_saved(name_ordini, name_pagamenti = None):
+def check_all_updates_saved(orders_name, payments_name = None):
    
-    order_names = set(name_ordini)
+    order_names = set(orders_name)
     
-    if name_pagamenti:
-        payment_indices = set(name_pagamenti)
+    if payments_name:
+        payment_indices = set(payments_name)
         all_required_updates = payment_indices.union(order_names)
     else:
         all_required_updates = order_names
@@ -76,12 +76,12 @@ def get_nomi(df, nome_ordine):
 
 st.set_page_config(layout="wide")
 
-columns_to_show = ['Name', "Total", 'Shipping', 'Discount Code', 'Discount Amount', 'Paid at', 'Payment Method', 'Email', 'Financial Status', 'Currency', 
+COLUMNS_TO_SHOW = ['Name', "Total", 'Shipping', 'Discount Code', 'Discount Amount', 'Paid at', 'Payment Method', 'Email', 'Financial Status', 'Currency', 
                    'Lineitem quantity', 'Lineitem name', 'Lineitem price', 'Lineitem compare at price', "Lineitem sku", "Shipping Country", 'Refunded Amount', 'Outstanding Balance', 'Location']   
 
-payments = ["Bonifico", "PayPal Express Checkout", "Qromo", "Satispay", "Scalapay", "Shopify Payments", "Gift Card", "Cash"]      
+PAYMENTS = ["Bonifico", "PayPal Express Checkout", "Qromo", "Satispay", "Scalapay", "Shopify Payments", "Gift Card", "Cash"]      
 
-exclude_strings = ["Luxury Pack", "Engraving", "E-gift", "Repair", "Whatever Tote", "Piercing Party", "LIL Bag"]
+EXCLUDE_STRINGS = ["Luxury Pack", "Engraving", "E-gift", "Repair", "Whatever Tote", "Piercing Party", "LIL Bag"]
 
 # Initialize session state variables
 if 'processed_data' not in st.session_state:
@@ -101,8 +101,13 @@ if 'pagamenti_da_aggiungere_lil' not in st.session_state:
 if 'pagamenti_da_aggiungere_agee' not in st.session_state:
     st.session_state.pagamenti_da_aggiungere_agee = {}
 
+
+############ INPUT PAGE ###############
+
 # Title of the page
 st.title("Check di Pagamenti LIL Milan e AGEE")
+
+st.json(st.session_state)
 
 # Create a container
 upload_container = st.container()
@@ -112,7 +117,7 @@ with upload_container:
 
     # Section for uploading order files
     st.subheader("Caricare almeno un file di ordini")
-    ordine_files = {
+    order_files = {
         "Ordini LIL": {
             "file": st.file_uploader("Caricare file Ordini LIL", type=["csv"], key="ordini_lil"),
             "include": st.checkbox("File da includere", value=True, key="ordini_lil_include"),
@@ -120,7 +125,7 @@ with upload_container:
     }
     st.markdown("---")
 
-    ordine_files["Ordini AGEE"] = {
+    order_files["Ordini AGEE"] = {
         "file": st.file_uploader("Caricare file Ordini AGEE", type=["csv"], key="ordini_agee"),
         "include": st.checkbox("File da includere", value=True, key="ordini_agee_include"),
     }
@@ -129,7 +134,7 @@ with upload_container:
     # Section for uploading payment files
     st.subheader("Caricare almeno un file di pagamenti")
 
-    other_files = {
+    payment_files = {
         "Bonifici": {
             "file": st.file_uploader("Caricare file per Bonifici", type=["xlsx"], key="bonifici"),
             "include": st.checkbox("File da includere", value=True, key="bonifici_include"),
@@ -137,38 +142,38 @@ with upload_container:
     }
     st.markdown("---")
 
-    other_files["Paypal"] = {
+    payment_files["Paypal"] = {
         "file": st.file_uploader("Caricare file per Paypal", type=["csv"], key="paypal"),
         "include": st.checkbox("File da includere", value=True, key="paypal_include"),
     }
     st.markdown("---")
 
 
-    other_files["Qromo"] = {
+    payment_files["Qromo"] = {
         "file": st.file_uploader("Caricare file per Qromo", type=["csv"], key="qromo"),
         "include": st.checkbox("File da includere", value=True, key="qromo_include"),
     }
     st.markdown("---")
 
-    other_files["Satispay"] = {
+    payment_files["Satispay"] = {
         "file": st.file_uploader("Caricare file per Satispay", type=["csv"], key="satispay"),
         "include": st.checkbox("File da includere", value=True, key="satispay_include"),
     }
     st.markdown("---")
 
-    other_files["Scalapay"] = {
+    payment_files["Scalapay"] = {
         "file": st.file_uploader("Caricare file per Scalapay", type=["csv"], key="scalapay"),
         "include": st.checkbox("File da includere", value=True, key="scalapay_include"),
     }
     st.markdown("---")
 
-    other_files["Shopify AGEE"] = {
+    payment_files["Shopify AGEE"] = {
         "file": st.file_uploader("Caricare file per Shopify AGEE", type=["csv"], key="shopify_agee"),
         "include": st.checkbox("File da includere", value=True, key="shopify_agee_include"),
     }
     st.markdown("---")
 
-    other_files["Shopify LIL"] = {
+    payment_files["Shopify LIL"] = {
         "file": st.file_uploader("Caricare file per Shopify LIL", type=["csv"], key="shopify_lil"),
         "include": st.checkbox("File da includere", value=True, key="shopify_lil_include"),
     }
@@ -181,43 +186,50 @@ with upload_container:
     # Warning logic and continuation option
     missing_files = []
 
-    # Check if at least one file is uploaded for "ordine_files" and "other_files" categories
-    at_least_one_ordini = any(content["include"] and content["file"] for content in ordine_files.values())
-    at_least_one_other = any(content["include"] and content["file"] for content in other_files.values())
+    # Check if at least one file is uploaded for "orders_files" and "payment_files" categories
+    at_least_one_order = any(content["include"] and content["file"] for content in order_files.values())
+    at_least_one_payment = any(content["include"] and content["file"] for content in payment_files.values())
 
+    ## definiti missining, quelli flaggati ma non inseriti -- TODO: forse rendere più chiara la variabile ma va bene così##
     # Identify missing files in selected categories
-    for label, content in {**ordine_files, **other_files}.items():
+    for label, content in {**order_files, **payment_files}.items():
         if content["include"] and not content["file"]:
             missing_files.append(label)
 
     # Validation messages
-    proceed_ordini = True
-    if not at_least_one_ordini:
+    proceed_orders = True
+    if not at_least_one_order:
         st.error("Per favore, caricare almeno un file di ordini.")
-        proceed_ordini = False
-    if not at_least_one_other:
+        proceed_orders = False
+    if not at_least_one_payment:
         st.error("Per favore, caricare almeno un file di pagamenti.")
-        proceed_ordini = False
+        proceed_orders = False
 
     if missing_files:
         st.warning(f"Attenzione! Mancano i file: {', '.join(missing_files)}")
-        proceed_ordini = False
+        proceed_orders = False
         
-    if proceed_ordini:
+    if proceed_orders:
+        ### TODO: Il bottone viene disabilitato se i file sono già stati processati --- mmm what? why? ###
         process_button = st.button("Processare i file", key="process_files_button", disabled=st.session_state.get("files_processed", False))
 
+        # Starts matching orders and payments and elaborates the remaining data to be controlled.
         if process_button:
-            uploaded_ordini_files = {name: content["file"] for name, content in ordine_files.items() if content["file"] is not None and content["include"] is True}
-            uploaded_other_files = {name: content["file"] for name, content in other_files.items() if content["file"] is not None and content["include"] is True}
+            uploaded_orders_files = {name: content["file"] for name, content in order_files.items() if content["file"] is not None and content["include"] is True}
+            uploaded_payment_files = {name: content["file"] for name, content in payment_files.items() if content["file"] is not None and content["include"] is True}
             try:
                 with st.spinner('Elaborazione dei file in corso...'):
                     # Check each uploaded and included order file
-                    for name, f_file in uploaded_ordini_files.items():
-                        check_files(ordine_files, name, month, year)    
-                    for name, f_file in uploaded_other_files.items():
-                        check_files(other_files, name, month, year)
+                    # Checks if data of the year and month inserted are present inside the files otherwise raise error. 
+                    for name, f_file in uploaded_orders_files.items():
+                        check_files(order_files, name, month, year)    
+                    for name, f_file in uploaded_payment_files.items():
+                        check_files(payment_files, name, month, year)
                     
-                    result_df, pagamenti_df = run(ordine_files, other_files, month, year)
+                    # Run the matching between orders and payments
+                    result_df, pagamenti_df = run(order_files, payment_files, month, year)
+                    
+                    # Save the resulting data in the session state
                     st.session_state.processed_data = result_df
                     st.session_state.pagamenti = pagamenti_df
                     # st.session_state.files_processed = True  # Set the flag to disable the button
@@ -225,45 +237,69 @@ with upload_container:
                 st.error(f"❌ {e.message}")
                 if e.details:
                     st.info(e.details)
-      
+
+############### FINE PAGINA DI INPUT ###############
+
 if st.session_state.processed_data is not None and st.session_state.pagamenti is not None:  
+    ###TODO: -- Funziona??-- ###
     upload_container.empty()  
+    
     st.session_state.processed_data['original_index'] = st.session_state.processed_data.index.astype(int)
     st.session_state.pagamenti['original_index'] = st.session_state.pagamenti.index.astype(int)
 
     # Display LIL Milan results that need checking
+    #####################################################################
+    ## TODO: Da qui in giù fino a FINE da far fare tramite model
+   
     df_rilevante = st.session_state.processed_data[(st.session_state.processed_data["CHECK"] != "ESCLUSO")].copy()
+    
+    # TODO: forse li ordinerei per tipologia
+    # TODO: Sortiamo ogni volta che ricarichiamo la pagina?
     df_rilevante_sorted = df_rilevante.sort_values(by=["CHECK", "Name"])
   
     names_count_lil = len(df_rilevante[df_rilevante["Brand"] == "Ordini LIL"]["Name"].unique())
     names_count_agee = len(df_rilevante[df_rilevante["Brand"] == "Ordini AGEE"]["Name"].unique())
 
     lil_df = df_rilevante_sorted[(df_rilevante_sorted["CHECK"] != "VERO") & (df_rilevante_sorted["Brand"] == "Ordini LIL")].copy()
-    lil_df = lil_df.drop_duplicates(subset=columns_to_show)
+    lil_df = lil_df.drop_duplicates(subset=COLUMNS_TO_SHOW)
+    #TODO: Lo usa per fare append al df di lil capire bene cosa fa e capire se si può evitare sta porcata.
     last_index_lil = lil_df['original_index'].max()
     name_lil = lil_df["Name"].unique()
 
     agee_df = df_rilevante_sorted[(df_rilevante_sorted["CHECK"] != "VERO") & (df_rilevante_sorted["Brand"] == "Ordini AGEE")].copy()
-    agee_df = agee_df.drop_duplicates(subset=columns_to_show)
+    agee_df = agee_df.drop_duplicates(subset=COLUMNS_TO_SHOW)
     last_index_agee = agee_df['original_index'].max()
     name_agee = agee_df["Name"].unique()
 
-    name_ordini = np.concatenate([name_lil if len(name_lil) > 0 else np.array([]),
-                                name_agee if len(name_agee) > 0 else np.array([])
-                                ])
+    # Potenzialmente salta per questo -- uncomment in caso
+    # orders_name = np.concatenate([name_lil if len(name_lil) > 0 else np.array([]),
+    #                             name_agee if len(name_agee) > 0 else np.array([])
+    #                             ])
 
-    count_ordini = 0
-
+    ## TODO: Conta ogni volta che viene modificato un ordina con "conferma modifiche" sia di lil che di agee
+    ## TODO: Lo usa come controllo per vedere se tutti gli ordini sono stati modificati e per "sbloccare" la parte pagamenti
+    orders_count = 0
+    ### TODO: FINE
+    ####################################################################################
     #LIL MILAN
+    
+    st.session_state.names_check_lil = None
+
     if len(lil_df) > 0:
         st.write("")
         st.subheader("Ordini da controllare LIL Milan")
 
-        lil_df_sorted = lil_df.sort_values(by=["CHECK", "Name"])
-            
-        names_check = lil_df_sorted[lil_df_sorted['Name'].notna()]['Name'].unique()
+        # Evita di fare il sorting e il filtering ad ogni ricarica
+        # Se non c'è in variabile di stato ordina e calcola gli order id da coqntrollare altrimenti li carica da variabile di stato
+        if st.session_state.names_check_lil is None:
+            lil_df_sorted = lil_df.sort_values(by=["CHECK", "Name"])
+            names_check = lil_df_sorted[lil_df_sorted['Name'].notna()]['Name'].unique()
+            st.session_state.names_check_lil = names_check
+        else:
+            names_check = st.session_state.names_check_lil
+        
         st.write(f"{len(names_check)} ordini su {names_count_lil}")
-            
+        pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] != "VERO")].copy()    
         for name in names_check:
             with st.container():
                 st.markdown("---")  # Visual separator
@@ -272,9 +308,10 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                 name_df = lil_df[lil_df['Name'] == name]
                 check = name_df["CHECK"].values[0]
                 metodo = name_df["Payment Method"].values[0]
-                st.session_state.numeri_pagamenti = []
-                pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] != "VERO")].copy()
+                st.session_state.numeri_pagamenti = []              # Serve a salvare i pagamenti associati all'ordine | Resettiamo ad ogni nuovo ordine
+               
 
+                ## Pagamento con Qromo (o Satispay Offline) o totale non corrispondente a quanto incassato
                 if check == "FALSO":
                     
                     if "Qromo" in metodo:# or "Satispay" in metodo:
@@ -289,6 +326,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                         st.write(f"Importo effettivamente incassato: **{name_df['Importo Pagato'].values[0]}**")
 
                 
+                ## Pagamento corrispondente all'ordine non trovato
                 elif check == "NON TROVATO":
                     st.write(f"Non è stato trovato un pagamento relativo all'ordine. Modificare i valori delle colonne opportune.")
 
@@ -304,20 +342,23 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                 elif check.startswith("VALUTA"):
                     st.write(f"Il pagamento non è stato fatto in EURO, confermare l'importo effettivamente incassato.")
-                    st.write(f"Importo pagato in **{check.split("_")[1]}**: **{name_df['Importo Pagato'].values[0]}**")
+                    st.write(f"Importo pagato in **{check.split('_')[1]}**: **{name_df['Importo Pagato'].values[0]}**")
 
                 # elif check == "FATTURA":
                 #     st.write(f"Il pagamento non è stato fatto in EURO, confermare l'importo effettivamente incassato.")
                 #     st.write(f"Importo pagato in **{check.split("_")[1]}**: **{name_df['Importo Pagato'].values[0]}**")
 
-                st.dataframe(name_df[columns_to_show], use_container_width=True)
+                # MOSTRA A SCHERMO IL DATAFRAME CON I DATI DELL'ORDINE
+                st.dataframe(name_df[COLUMNS_TO_SHOW], use_container_width=True)
 
+                ## TODO: Salvare in session state il risultato della funzione
                 # Check for required fields before showing the form
-                nan, double_payment_method = missing_fields(lil_df, name, exclude_strings)
+                nan, double_payment_method = missing_fields(lil_df, name, EXCLUDE_STRINGS)
                 # missing_fields_str = [str(field) for field in nan]
 
                 cambiare_metodo = False
-                            
+
+                ## Shows a warning for each missing field            
                 if nan:
                     # if check == "FALSO":
                     base_warning = f"Attenzione: I seguenti campi mancano ed è necessario inserirli per le analisi: {', '.join(nan)}"
@@ -338,10 +379,16 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                         elif field == "Lineitem sku":
                             st.warning("Inserire lo SKU a 12 cifre")
 
+
+                ## TODO: Capire questa scelta di gestione del metodo di pagamento multiplo (non solo doppio)
+                ## Shows a warning if there are multiple payment methods and asks to choose one
                 if double_payment_method:
                     base_warning = f"Attenzione: Payment Method va modificato, e va scelto un unico metodo di pagamento effettivamente usato"
                     st.warning(base_warning)
 
+
+                ## Da i vari warnings e fa scegliere i pagamenti da associare all'ordine nel caso di Qromo (o Satispay) 
+                # e poi fa procedere con la modifica delle colonne
                 if "Qromo" in metodo: # or "Satispay" in metodo:
                     # Get possibili_pagamenti more cleanly
                     # possibili_pagamenti = name_df['possibili_pagamenti'].iloc[0]
@@ -350,23 +397,34 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     # # # Filter pagamenti DataFrame
                     # filtered_rows_same_date = pagamenti[pagamenti['Numero Pagamento'].isin(possibili_pagamenti)]
 
+                    ## TODO: FUNZIONEEEEE STARTTTTTTTTTTTTT
                     totale = name_df["Total"].values[0]
                     paid_at = str(name_df["Paid at"].values[0])[:10]
                     # Combine conditions explicitly
                     filtered_rows = pagamenti[(pagamenti["Importo Pagato"] <= totale)] 
+
+                    ## TODO: Cosa succede nel caso in cui si pagano + ordini con un pagamento? Raro ma possibile, cosa facciamo?
                     
                     # Fix the condition using any() for Series comparison
+                    ## Seleziona tutti i pagamenti di Qromo o Satispay con importo <= totale dell'ordine
                     satispay_mask = (filtered_rows["Metodo"] == "Satispay") & (filtered_rows["Numero Pagamento"] == "0")
                     qromo_mask = filtered_rows["Metodo"] == "Qromo"
                     filtered_rows = filtered_rows[satispay_mask | qromo_mask].sort_values(by="Data", ascending = False)
+                    ### TODO: END
+                    
+                    ## Mostra nel caso di Qromo la lista con checkbox di pagamenti tra cui scegliere
+                    ## TODO: Mostrare metodo di pagamento (Qromo / Satispay tra parentesi accanto al pagamento da selezionare)
 
                     if not filtered_rows.empty:
                         st.write("Selezionare uno o più pagamenti corrispondenti all'ordine:")
                         selected_rows = []
                         importi_pagati = []
-
+                        
+                        # Mostra e fa selezionare i pagamenti corrispondenti all'ordine dalla lista di righe filtrateù
+                        # Mette in selected_rows i pagamenti selezionati e in importi_pagati gli importi pagati
                         for index, row in filtered_rows.iterrows():
                             unique_key = f"{name}_{index}"
+                            ## Mette in bold i pagamenti fatti nello stesso giorno dell'ordine
                             if str(row["Data"]).startswith(paid_at):
                                 # Format the label with bold text
                                 label = f"**{row['Importo Pagato']}€ pagati alle {row['Data']}**"
@@ -380,13 +438,18 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                                 st.session_state.metodo_pagamento = row["Metodo"]
                                 # proceed = True
-
-                        # Handle selected payments
+                        
+                        # TODO: Da gestire con una funzione invece che con lo stato?
+                        # Handle selected payments and verifies double assignments in case it warns the user 
+                        # otherwise updates the list of payments to be added
+                        # Suggest the user to change the total if the sum of the selected payments is different from the total
                         if len(selected_rows) > 0:
                             # Check for already assigned payments
                             for numero in st.session_state.numeri_pagamenti:
                                 if numero in st.session_state.pagamenti_da_aggiungere_lil.keys():
                                     matching_name = st.session_state.pagamenti_da_aggiungere_lil[numero]
+                                    
+                                    ## TODO: Non permette doppio assegnamento di pagamenti a ordini
                                     if matching_name != name:
                                         st.warning(f"Il pagamento {numero} è già stato assegnato all'ordine {matching_name}")
                                 else:
@@ -395,30 +458,37 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             
                             # Display selected payments info
                             importo_pagato = sum(importi_pagati)
-                            st.write("Hai selezionato:")
-                            selected_df = pd.DataFrame(selected_rows)
-                            st.write(selected_df[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]])
+                            # st.write("Hai selezionato:")
+                            # selected_df = pd.DataFrame(selected_rows)
+                            # st.write(selected_df[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]])
                             st.write(f"Cambia il **Total** con **{importo_pagato:.2f}**")
-                            
+                           
                             if metodo.replace("Gift Card", "").replace("+", "").replace(" ", "") != st.session_state.metodo_pagamento:  # Added .iloc[0]
                                 st.write(f"Cambia il **Payment Method** con **{st.session_state.metodo_pagamento}**")
                                 cambiare_metodo = True
+
+                        ## Se la selezione è vuota suggerisce di cambiare il total a 0
                         else:
                             st.write("Non hai selezionato alcun pagamento.")
                             st.write("Cambia il **Total** con **0**")
                             importo_pagato = 0.0
                             selected_rows.append(0)
+
+                    ## Se non ci sono pagamenti non assegnati in Qromo, lascia vuote le variabili e non assegna alcun pagamento all'ordine
                     else:
                         selected_rows = []
                         st.session_state.numeri_pagamenti = [] #.append(name_df["Numero Pagamento"].values[0])
                         st.session_state.metodo_pagamento = None
+
+                ## Se non è Qromo (o Satispay Offline) il metodo di pagamento..
+                # Aggiungiamo alla lista numeri pagamenti (SV) il numero pagamento di quel pagamento (dal df degli ordini però)
                 else:
                     selected_rows = []
                     st.session_state.numeri_pagamenti.append(name_df["Numero Pagamento"].values[0])
                     st.session_state.metodo_pagamento = None
 
                 # Dropdown to select which columns to edit (multi-select)
-                columns_to_edit = st.multiselect("Selezionare le colonne da modificare:", columns_to_show, key=f"multiselect_{name}")
+                columns_to_edit = st.multiselect("Selezionare le colonne da modificare:", COLUMNS_TO_SHOW, key=f"multiselect_{name}")
 
                 # Create a form for editing the selected columns
                 with st.form(f"edit_row_form_{name}"):
@@ -430,7 +500,8 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                     # Handle each selected column
                     for column in columns_to_edit:
-
+                        
+                        ## TODO: Estrarre funzione generale per gestire input
                         if column.startswith('Lineitem'):
                             # For Lineitem columns, show input for each row
                             st.write(f"Modifica {column}:")
@@ -483,7 +554,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                     current_value = row[column]
                                     input_key = f"{column}_{name}_{idx}"
                                     st.text_input(
-                                        f"{f'Valore attuale per {column} - {row["Lineitem name"]}: {current_value}' if not pd.isna(current_value) else f'Inserire il valore di {column} per {row["Lineitem name"]}:'}",
+                                        f'Valore attuale per {column} - {row["Lineitem name"]}: {current_value}' if not pd.isna(current_value) else f'Inserire il valore di {column} per {row["Lineitem name"]}:',
                                         value=str(current_value) if not pd.isna(current_value) else "015790000000",
                                         key=input_key
                                     )
@@ -539,8 +610,8 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                     
                                 new_value = st.selectbox(
                                     f"Selezionare {column}:",
-                                    options=payments,
-                                    index=0 if pd.isna(current_value) or not payments else 0,
+                                    options=PAYMENTS,
+                                    index=0 if pd.isna(current_value) or not PAYMENTS else 0,
                                     key=input_key
                                 )
                                 
@@ -569,6 +640,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                 
                             
                         # Apply the same value to all rows for non-Lineitem columns
+                        # Quindi fa forward dei valori nuovi nelle righe sotto anche
                         for _, row in name_df.iterrows():
                             if row.original_index not in new_values:
                                 new_values[row.original_index] = {
@@ -588,7 +660,9 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                 with section_placeholder.container():
                     # Store the submission state
                     if submit and all_required_fields_filled:
-
+                        
+                        ## Verfica che i nan sono stati modificati e che le colonne da modificare obbligatorie siano state modificate
+                        ## TODO: Si può chiamare una funzione per semplicità
                         if double_payment_method and "Payment Method" not in columns_to_edit:
                             st.error("È necessario compilare il campo Payment Method e scegliere un unico metodo di pagamento")
                             all_required_fields_to_continue = False
@@ -686,7 +760,9 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     # Show success message if it's in the session state
                     if f'success_{name}' in st.session_state and st.session_state[f'success_{name}']:
                         st.success("Modifiche salvate con successo!")
-                        count_ordini += 1
+                        orders_count += 1
+                        
+                        ## TODO: Non serve sta variabile
                         to_modify = False
                         for n in st.session_state.numeri_pagamenti:
                             if n not in st.session_state.pagamenti_da_aggiungere_lil.keys():
@@ -722,7 +798,9 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                                         & (pagamenti["Metodo"].isin(payments_used))
                                                         & (pagamenti["Numero Pagamento"] != numero_pagamento)]
                             pagamenti_to_show = pagamenti_to_show.sort_values(by = "Importo Pagato", ascending = False)
-
+                            
+                            ## TODO: Checkbox simile a quella di Qromo si può gestire con una funzione?
+                            ## TODO: Mostrare metodo di pagamento (Qromo / Satispay tra parentesi accanto al pagamento da selezionare)
                             if not pagamenti_to_show.empty:
                                 st.write("Selezionare uno o più pagamenti corrispondenti all'ordine:")
                                 selected_rows = []
@@ -731,7 +809,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                                 for index, row in pagamenti_to_show.iterrows():
                                     unique_key = f"add_pagamenti_{name}_{index}"
-                                    if st.checkbox(f"{row['Importo Pagato']}€ pagati alle {row['Data']} con {row["Metodo"]}", key=unique_key):
+                                    if st.checkbox(f"{row['Importo Pagato']}€ pagati alle {row['Data']} con {row['Metodo']}", key=unique_key):
                                         selected_rows.append(row)
                                         importi_pagati.append(row["Importo Pagato"])
                                         st.session_state.numeri_pagamenti.append(row["Numero Pagamento"])
@@ -754,9 +832,9 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                                     # Display selected payments info
                                     importo_pagato = sum(importi_pagati)
-                                    st.write("Hai selezionato:")
-                                    selected_df = pd.DataFrame(selected_rows)
-                                    st.write(selected_df[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]])
+                                    # st.write("Hai selezionato:")
+                                    # selected_df = pd.DataFrame(selected_rows)
+                                    # st.write(selected_df[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]])
 
                                     with st.form(f"add_row_other_{name}"): 
                                         # Submit button after all other form elements
@@ -781,13 +859,14 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             if n not in st.session_state.pagamenti_da_aggiungere_lil.keys():
                                 st.session_state.pagamenti_da_aggiungere_lil[n] = name
                         if to_modify:
-                            count_ordini += 1
+                            orders_count += 1
                     
     else:
         st.subheader("Nessun ordine di LIL Milan deve essere controllato")
 
 
     #AGEE
+    # Probabilmente identico a Lil fare una funzione unica per replicarlo?
     if len(agee_df) > 0:
         st.write("")
         st.subheader("Ordini da controllare AGEE")
@@ -826,12 +905,12 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                 #ggiunto dopo
                 elif check.startswith("VALUTA"):
                     st.write(f"Il pagamento non è stato fatto in EURO, confermare l'importo effettivamente incassato.")
-                    st.write(f"Importo pagato in **{check.split("_")[1]}**: **{name_df['Importo Pagato'].values[0]}**")
+                    st.write(f"Importo pagato in **{check.split('_')[1]}**: **{name_df['Importo Pagato'].values[0]}**")
 
-                st.dataframe(name_df[columns_to_show], use_container_width=True)
+                st.dataframe(name_df[COLUMNS_TO_SHOW], use_container_width=True)
 
                 # Check for required fields before showing the form
-                nan, double_payment_method = missing_fields(agee_df, name, exclude_strings)
+                nan, double_payment_method = missing_fields(agee_df, name, EXCLUDE_STRINGS)
                 # missing_fields_str = [str(field) for field in nan]
 
                 cambiare_metodo = False
@@ -920,9 +999,9 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             
                             # Display selected payments info
                             importo_pagato = sum(importi_pagati)
-                            st.write("Hai selezionato:")
-                            selected_df = pd.DataFrame(selected_rows)
-                            st.write(selected_df[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]])
+                            # st.write("Hai selezionato:")
+                            # selected_df = pd.DataFrame(selected_rows)
+                            # st.write(selected_df[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]])
                             st.write(f"Cambia il **Total** con **{importo_pagato:.2f}**")
                             
                             if metodo.replace("Gift Card", "").replace("+", "").replace(" ", "") != st.session_state.metodo_pagamento:  # Added .iloc[0]
@@ -943,7 +1022,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     st.session_state.metodo_pagamento = None
 
                 # Dropdown to select which columns to edit (multi-select)
-                columns_to_edit = st.multiselect("Selezionare le colonne da modificare:", columns_to_show, key=f"multiselect_{name}")
+                columns_to_edit = st.multiselect("Selezionare le colonne da modificare:", COLUMNS_TO_SHOW, key=f"multiselect_{name}")
 
                 # Create a form for editing the selected columns
                 with st.form(f"edit_row_form_{name}"):
@@ -1009,7 +1088,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                     current_value = row[column]
                                     input_key = f"{column}_{name}_{idx}"
                                     st.text_input(
-                                        f"{f'Valore attuale per {column} - {row["Lineitem name"]}: {current_value}' if not pd.isna(current_value) else f'Inserire il valore di {column} per {row["Lineitem name"]}:'}",
+                                        f'Valore attuale per {column} - {row["Lineitem name"]}: {current_value}' if not pd.isna(current_value) else f'Inserire il valore di {column} per {row["Lineitem name"]}:',
                                         value=str(current_value) if not pd.isna(current_value) else "015790000000",
                                         key=input_key
                                     )
@@ -1064,8 +1143,8 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                     
                                 new_value = st.selectbox(
                                     f"Selezionare {column}:",
-                                    options=payments,
-                                    index=0 if pd.isna(current_value) or not payments else 0,
+                                    options=PAYMENTS,
+                                    index=0 if pd.isna(current_value) or not PAYMENTS else 0,
                                     key=input_key
                                 )
                                 
@@ -1209,7 +1288,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                 # Show success message if it's in the session state
                 if f'success_{name}' in st.session_state and st.session_state[f'success_{name}']:
                     st.success("Modifiche salvate con successo!")
-                    count_ordini += 1
+                    orders_count += 1
                     to_modify = False
                     for n in st.session_state.numeri_pagamenti:
                         if n not in st.session_state.pagamenti_da_aggiungere_agee.keys():
@@ -1254,7 +1333,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                             for index, row in pagamenti_to_show.iterrows():
                                 unique_key = f"add_pagamenti_{name}_{index}"
-                                if st.checkbox(f"{row['Importo Pagato']}€ pagati alle {row['Data']} con {row["Metodo"]}", key=unique_key):
+                                if st.checkbox(f"{row['Importo Pagato']}€ pagati alle {row['Data']} con {row['Metodo']}", key=unique_key):
                                     selected_rows.append(row)
                                     importi_pagati.append(row["Importo Pagato"])
                                     st.session_state.numeri_pagamenti.append(row["Numero Pagamento"])
@@ -1282,9 +1361,9 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                             
                                 # Display selected payments info
                                 importo_pagato = sum(importi_pagati)
-                                st.write("Hai selezionato:")
-                                selected_df = pd.DataFrame(selected_rows)
-                                st.write(selected_df[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]])
+                                # st.write("Hai selezionato:")
+                                # selected_df = pd.DataFrame(selected_rows)
+                                # st.write(selected_df[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]])
 
                                 with st.form(f"add_row_other_{name}"): 
                                     # Submit button after all other form elements
@@ -1309,7 +1388,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                         if n not in st.session_state.pagamenti_da_aggiungere_agee.keys():
                             st.session_state.pagamenti_da_aggiungere_agee[n] = name
                     if to_modify:
-                        count_ordini += 1
+                        orders_count += 1
                 
                             
     else:
@@ -1327,7 +1406,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     #     )
 ################### pagamenti
 
-    proceed_pagamenti = count_ordini >= len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
+    proceed_pagamenti = orders_count >= len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
 
     if proceed_pagamenti:  # Or your specific condition for moving to the next section
         section_placeholder.empty()  # Clears all contents of the placeholder
