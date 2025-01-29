@@ -120,9 +120,9 @@ class Ordini:
         self.df["Payment Method"] = self.df["Payment Method"].str.strip()
 
         altri_negozi = self.df[((self.df["Payment Method"].isna()) & (self.df["Total"] == 0))]["Name"].unique()
+        sostituzioni = self.df[((self.df["Discount Code"].str.contains(r"(?i)(sostituzione)", na=False)) & (self.df["Total"] == 0))]["Name"].unique()
         gifts = self.df[((self.df["Discount Code"].str.contains(r"(?i)gift|diretti", na=False)))]["Name"].unique()
         ddt = self.df[((self.df["Discount Code"].str.contains(r"(?i)ddt", na=False)))]["Name"].unique()
-        sostituzioni = self.df[((self.df["Discount Code"].str.contains(r"(?i)(sostituzione)", na=False)) & (self.df["Total"] == 0))]["Name"].unique()
         
         for name in np.concatenate([altri_negozi, sostituzioni]):
             mask = self.df["Name"] == name
@@ -273,7 +273,7 @@ class Ordini:
     def handle_financial_status(self):
         
         all_compare_nonzero = self.df.groupby("Name")["Lineitem compare at price"].transform(lambda x: (x != 0).all())
-        nomi = self.df[((self.df["Outstanding Balance"] != 0) | self.df["Refunded Amount"] != 0) & ((self.df["Payment Method"] == "Cash")) & all_compare_nonzero]["Name"].unique()
+        nomi = self.df[((self.df["Outstanding Balance"] != 0) | self.df["Refunded Amount"] != 0) & (self.df["Payment Method"] == "Cash") & all_compare_nonzero]["Name"].unique()
 
         for name in nomi:
             name_mask = self.df["Name"] == name
@@ -288,20 +288,6 @@ class Ordini:
                 else:
                     self.df.loc[name_mask, 'CHECK'] = "FALSO" 
 
-
-    def handle_nan(self):
-
-        fill_columns = ["Subtotal", "Shipping", "Total", "Discount Amount", "Refunded Amount", "Outstanding Balance"]
-        self.df[fill_columns] = self.df[fill_columns].fillna(0)
-        
-        colonne_non_na = ["Name", "Paid at", "Lineitem quantity", "Lineitem name", "Lineitem price", 
-                        "Payment Method", "Location", "Shipping Country", "Payment References"]
-        
-        rilevanti = self.df[(self.df["CHECK"] != "ESCLUSO")]["Name"].unique()
-
-        mask_rilevanti = self.df["Name"].isin(rilevanti)
-        nan_mask = self.df[mask_rilevanti][colonne_non_na].isna().any(axis=1)
-        self.df.loc[mask_rilevanti & nan_mask, "CHECK"] = "VALORE NAN"
 
     def handle_nan(self):
         fill_columns = ["Subtotal", "Shipping", "Total", "Discount Amount", "Refunded Amount", "Outstanding Balance"]
