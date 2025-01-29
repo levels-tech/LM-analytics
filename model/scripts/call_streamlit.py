@@ -195,6 +195,53 @@ def missing_fields(df, nome, exclude):
     return to_check, to_change
 
 
+
+#####################################################################################
+
+## AGGIUNGI NEW VALUES
+
+def add_new_value_lineitem(new_values, row, column, value):
+    """
+    Adds a new value to the 'values' dictionary for a specific row in the dataset for Lineitem columns.
+
+    Parameters:
+    - new_values (dict): A dictionary storing updates for different rows, where keys are original row indices 
+                         and values are dictionaries containing updated column values.
+    - row (pd.Series): A Pandas Series representing a single row, which must contain an 'original_index' attribute.
+    - column (str): The column name to update.
+    - value (any): The new value to assign to the specified column.
+
+    Returns:
+    - dict: The updated new_values dictionary with the added value for the specified row.
+    """
+    if row.original_index not in new_values:
+        new_values[row.original_index] = {'values': {}}
+    new_values[row.original_index]['values'][column] = value
+
+    return new_values
+
+def add_new_value_others(new_values, name_df, column, value):
+    """
+    Iterates over all rows in a DataFrame and adds a new value to each row's 'values' dictionary for NON-Lineitem columns.
+
+    Parameters:
+    - new_values (dict): A dictionary storing updates for different rows, where keys are original row indices 
+                         and values are dictionaries containing updated column values.
+    - name_df (pd.DataFrame): A Pandas DataFrame containing multiple rows, each with an 'original_index' attribute.
+    - column (str): The column name to update.
+    - value (any): The new value to assign to the specified column for all rows in the DataFrame.
+
+    Returns:
+    - dict: The updated new_values dictionary with the added values for all rows in name_df.
+    """
+    for _, row in name_df.iterrows():
+        if row.original_index not in new_values:
+            new_values[row.original_index] = {'values': {}}
+        new_values[row.original_index]['values'][column] = value
+
+    return new_values
+
+
 #####################################################################################
 
 # AGGIUNGI UNA RIGA AL DATAFRAME DI ORDINI
