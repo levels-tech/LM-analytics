@@ -22,38 +22,7 @@ class OrderSummary:
             group.loc[group['Total'].notna().cumsum() > 1, 'Total'] = pd.NA
         # If values are different, keep them as they are (no changes)
         return group
-    
-    # # Function to process data for a specific brand
-    # def process_location_df(self, df, brand, exclude_strings):
-    #     df_filtered = df[(df['Brand'] == brand) 
-    #                     & (df['CHECK'] != 'ESCLUSO') 
-    #                     & ((df['Total'] != 0) | ((df['Total'] == 0) & (df['Payment Method'] == "Gift Card")))]
-        
-    #     # Optimize 'Lineitem quantity gioiello' calculation
-    #     df_filtered['Lineitem quantity gioiello'] = np.where(
-    #         pd.isna(df_filtered['Lineitem name']) | (~df_filtered['Lineitem name'].str.contains('|'.join(exclude_strings), na=False)),
-    #         df_filtered['Lineitem quantity'], #if true
-    #         0 #if false
-    #     )
-        
-    #     # Calculate 'Lineitem quantity gioiello per name'
-    #     df_filtered['Lineitem quantity gioiello per name'] = df_filtered.groupby('Name')['Lineitem quantity gioiello'].transform('sum')
-        
-    #     # Group by 'Location'
-    #     group_location = df_filtered.groupby('Location').agg({
-    #         'Name': 'nunique',
-    #         'Lineitem quantity': 'sum',
-    #         'Lineitem quantity gioiello': 'sum'
-    #     }).reset_index()
-        
-    #     # Filter and group names with non-zero gioielli
-    #     gioielli = df_filtered[df_filtered['Lineitem quantity gioiello per name'] > 0].drop_duplicates('Name')
-    #     gioielli_count = gioielli.groupby('Location')['Name'].nunique()
-    #     gioielli_count.name = 'Name solo gioielli'
-        
-    #     # Merge the results
-    #     result = pd.merge(group_location, gioielli_count, on='Location', how='left').fillna(0)
-    #     return result
+
 
     def check_names_pagamenti(self, df_pagamenti):
 
@@ -362,12 +331,6 @@ class OrderSummary:
     # Method to create stats for each store location
     def create_location_stats(self, wb, start_row, summary_sheet, store_name):
 
-        # df['Lineitem quantity'] = df['Lineitem quantity'].astype(int)
-        # df['Lineitem quantity gioiello'] = df['Lineitem quantity gioiello'].astype(int)
-        # # # location_stats = df.groupby('Location').agg({'Name': 'nunique',
-        # # #                                              'Lineitem quantity': 'sum'}).reset_index()
-        # # # stats_dict = location_stats.set_index('Location').to_dict()
-
         # # # Get unique locations in the desired order
         if store_name == "LIL":
             title_of_locations = ["Firgun House", "LIL House", "LIL House London"]
@@ -394,21 +357,8 @@ class OrderSummary:
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal='center', vertical='center')
 
-        # # Group the DataFrame by Location to ensure data alignment
-        # grouped_df = df.groupby("Location")
 
-        # # Iterate over the unique locations
-        # for idx, location_label in enumerate(title_of_locations, start=start_row):
-        #     # Write the location name
-        #     
-
-        #     # Add formula for total quantity based on the location
-        
-
-        #     # Retrieve corresponding data for the location
-        #     location_data = grouped_df.get_group(location_label) if location_label in grouped_df.groups else None
-        #     if location_data is not None:
-                # Fill in the data
+        # Summary
         last_row = None
         for idx, location_label in enumerate(locations, start=start_row):
             summary_sheet[f'L{idx}'] = location_label
@@ -492,6 +442,13 @@ class OrderSummary:
                 summary_sheet[f'E{row}'] = f'=D{row}-C{row}'
                 summary_sheet[f'I{row}'] = f'=H{row}-G{row}'
             
+            elif payment_label == "Cash":
+                cash_row = row
+                summary_sheet[f'D{row}'] = f''
+                summary_sheet[f'H{row}'] = f''
+                summary_sheet[f'E{row}'] = f''
+                summary_sheet[f'I{row}'] = f''
+            
             else:
                 summary_sheet[f'D{row}'] = f'=IFERROR(SUM(\'{payment_label}_LIL\'!{payment_amount}:{payment_amount}), 0)'
                 summary_sheet[f'H{row}'] = f'=IFERROR(SUM(\'{payment_label}_AGEE\'!{payment_amount}:{payment_amount}), 0)'
@@ -507,22 +464,26 @@ class OrderSummary:
         summary_sheet[f'G{row}'] = f'=SUM(G2:G{row-1})'
         summary_sheet[f'G{row}'].font = Font(bold=True)
 
+        #add more info about Cash
+        new_row = row + 3
+
+        summary_sheet[f'C{new_row}'] = 'LIL & AGEE'
+        summary_sheet[f'C{new_row}'].font = Font(bold=True)
+        summary_sheet[f'D{new_row}'] = 'CHECK'
+        summary_sheet[f'D{new_row}'].font = Font(bold=True)
+        summary_sheet[f'E{new_row}'] = 'DIFF'
+        summary_sheet[f'E{new_row}'].font = Font(bold=True)
+        
+        summary_sheet[f'A{new_row+1}'] = 'Cash'
+        summary_sheet[f'C{new_row+1}'] = f'=C{cash_row}+G{cash_row})'
+        summary_sheet[f'D{new_row+1}'] = f'=IFERROR(SUM(Cash!E:E), 0)'
+        summary_sheet[f'E{new_row+1}'] = f'=D{new_row+1} - C{new_row+1}'
+
         headers = {'L1': 'Locations', 'M1': 'Incasso', 'N1': 'Ordini', 'O1': 'Items', 'P1': 'Gioielli', 'Q1': 'Items per Ordine', 'R1': 'Gioielli per Ordine'}
         for cell_position, value in headers.items():
             cell = summary_sheet[cell_position]
             cell.value = value
             cell.font = bold_font
-
-        # # Apply to both brands
-        # exclude_strings = ["Luxury Pack", "Engraving", "E-Gift", "Repair", "Whatever Tote", "Piercing Party", "LIL Bag"]
-
-        # # Sort and fill Total
-        # df_ordini_fill = self.df_ordini_all.sort_values(by=['Name', "Total"])
-        # df_ordini_fill["Total"] = df_ordini_fill.groupby('Name')["Total"].ffill()
-
-        # # Process LIL and AGEE data
-        # df_lil = self.process_location_df(df_ordini_fill, \'Ordini {store_name}\', exclude_strings)
-        # df_agee = self.process_location_df(df_ordini_fill, 'Ordini AGEE', exclude_strings)
 
         start_row = 3
         start_row = self.create_location_stats(workbook, start_row, summary_sheet, 'LIL')
