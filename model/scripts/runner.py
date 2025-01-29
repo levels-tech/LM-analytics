@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 from model.utils.exceptions import SkipMatcherException
-from model.utils.functions import reformat_date, check_partially_refunded, process_check_groups
+from model.utils.functions import reformat_date, process_check_groups
 
 class MatcherRunner:
 
@@ -177,7 +177,6 @@ class MatcherRunner:
 
             # Select columns from each DataFrame in all_dfs before concatenating
             df_pagamenti = pd.concat([df for df in all_dfs], ignore_index=True)
-            self.df_ordini_all, df_pagamenti = check_partially_refunded(self.df_ordini_all, df_pagamenti)
 
             self.df_ordini_all, df_pagamenti = self.handle_pagamenti_altri(df_pagamenti)
             self.df_ordini_all, df_pagamenti = self.handle_pagamenti_methods_diversi(df_pagamenti)

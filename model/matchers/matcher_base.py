@@ -5,7 +5,7 @@ import pandas as pd
 import io
 
 
-from model.utils.functions import find_header_row, reformat_date, check_partially_refunded, process_check_groups
+from model.utils.functions import find_header_row, reformat_date
 
 class PaymentMatcher:
     payment_info_list = [] 
@@ -34,19 +34,15 @@ class PaymentMatcher:
             elif name == "Qromo":
                 csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))
                 try:
-                    print("virgola")
                     f = pd.read_csv(csv_file, delimiter=",", dtype={date_column[name]: "string"}, thousands='.', decimal=",")
                 except:
-                    print("punto e virgola")
                     csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))  # Create a new instance
                     f = pd.read_csv(csv_file, delimiter=";", dtype={date_column[name]: "string"}, thousands='.', decimal=",")            
             else:
                 csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))
                 try:
-                    print("virgola")
                     f = pd.read_csv(csv_file, delimiter=",", dtype={date_column[name]: "string"})
                 except:
-                    print("punto e virgola")
                     csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))  # Create a new instance
                     f = pd.read_csv(csv_file, delimiter=";", dtype={date_column[name]: "string"})
             
@@ -265,7 +261,6 @@ class PaymentMatcher:
             df_check = self.check_double_payments(df_check)
 
         df_check = self.check_resi(df_check)
-        df_check, _ = check_partially_refunded(df_check) 
 
         cols = df_check.columns.tolist()
         cols = [col for col in cols if col not in ["CHECK"]] + ["CHECK"]
