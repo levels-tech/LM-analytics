@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 from model.utils.exceptions import SkipMatcherException
-from model.utils.functions import reformat_date, check_partially_refunded, process_check_groups
+from model.utils.functions import reformat_date, process_check_groups #, check_partially_refunded, 
 
 class MatcherRunner:
 
@@ -178,7 +178,7 @@ class MatcherRunner:
 
             # Select columns from each DataFrame in all_dfs before concatenating
             df_pagamenti = pd.concat([df for df in all_dfs], ignore_index=True)
-            self.df_ordini_all, df_pagamenti = check_partially_refunded(self.df_ordini_all, df_pagamenti)
+            # self.df_ordini_all, df_pagamenti = check_partially_refunded(self.df_ordini_all, df_pagamenti)
 
             self.df_ordini_all, df_pagamenti = self.handle_pagamenti_altri(df_pagamenti)
             self.df_ordini_all, df_pagamenti = self.handle_pagamenti_methods_diversi(df_pagamenti)
@@ -187,7 +187,15 @@ class MatcherRunner:
 
             subset_columns = self.df_ordini_all.columns[:self.df_ordini_all.columns.get_loc("Payment References") + 2]
 
-            self.df_ordini_all = self.df_ordini_all.sort_values('CHECK', key=lambda x: x.map(lambda v: 0 if v == 'VERO' else 1 if v.startswith('VALUTA') else 2 if v == 'FALSO' else 3))
+            # Apply the sorting logic to the 'CHECK' column
+            self.df_ordini_all = self.df_ordini_all.sort_values('CHECK', key=lambda x: x.map(
+                lambda v: 0 if v == 'VERO' 
+                else 1 if isinstance(v, str) and v.startswith('VALUTA') 
+                else 2 if v == 'FALSO' 
+                else 3 if pd.notna(v)  # Check if the value is not NaN
+                else 4  # Handle NaN values here
+            ))
+
             self.df_ordini_all = self.df_ordini_all.drop_duplicates(subset=subset_columns, keep='first')
 
             self.df_ordini_all = self.handle_nan()
@@ -205,4 +213,3 @@ class MatcherRunner:
         except Exception as e:
             print(f"Error in run_all_matchers: {str(e)}")
             raise e
-
