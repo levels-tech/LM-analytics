@@ -225,50 +225,6 @@ class PaymentMatcher:
 
         return df_check
     
-    #controlla valuta di paypal
-    def check_valuta(self, df_check):
-
-        get_valute = {
-            "USD": 0.919548,
-            "GBP": 1.172707,
-            "CHF": 1.046209,
-            "SEK": 0.087655,
-            "DKK": 0.134034,
-            "HUF": 0.002563,
-            "CZK": 0.040004,
-            "JPY": 0.006126,
-            "NOK": 0.086106, 
-            "PLN": 0.231678, 
-            "TRY": 0.028939,
-            "SGD": 0.68849, 
-            "NZD": 0.560897, 
-            "HKD": 0.117784,
-            "CAD": 0.675812, 
-            "AUD": 0.609449,
-            "ILS": 0.247803, 
-            "RON": 0.2011
-        }
-
-        df_check["Euro"] = 0.0 
-
-        for index, row in df_check.iterrows():
-            if row["Valuta"] != "EUR":
-                print("valuta diversa")
-                print(row[["CHECK", "Total", "Importo Pagato"]])
-            if row["CHECK"] == "FALSO" and row["Valuta"] != "EUR":
-                print("Valuta")
-                row["Euro"] = row["Importo Pagato"] * get_valute[row["Valuta"]]
-                if (row["Total"] - 10) < row["Euro"] < (row["Total"] + 10):
-                    print("Valuta ok")
-                    df_check.at[index, "Importo Pagato"] = row["Euro"] 
-                    df_check.at[index, "CHECK"] = "VERO" 
-                else:
-                    print("Valuta non ok")
-                    df_check.at[index, "CHECK"] = "VALUTA_" + row["Valuta"]
-        df_check = df_check.drop("Euro", axis = 1)
-
-        return df_check
-    
 
     def choose_merges(self, df_check):
         
@@ -309,10 +265,7 @@ class PaymentMatcher:
             df_check = self.check_double_payments(df_check)
 
         df_check = self.check_resi(df_check)
-        df_check, _ = check_partially_refunded(df_check)
-
-        if valuta == True:
-            df_check = self.check_valuta(df_check) 
+        df_check, _ = check_partially_refunded(df_check) 
 
         cols = df_check.columns.tolist()
         cols = [col for col in cols if col not in ["CHECK"]] + ["CHECK"]
@@ -345,4 +298,3 @@ class PaymentMatcher:
         merged_df = pd.merge(ordini, pagamenti, left_on="Matched Reference", right_on="Numero Pagamento", how='outer')
 
         return merged_df
-
