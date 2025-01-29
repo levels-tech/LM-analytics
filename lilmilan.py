@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 # Your original imports should work now
-from model.scripts.call_streamlit import run, update_df, check_files, missing_fields, add_row, aggiungi_pagamenti, generate_excel
+from model.scripts.call_streamlit import run, update_df, check_files, missing_fields, add_new_value_lineitem, add_new_value_others, add_row, aggiungi_pagamenti, generate_excel
 from model.utils.exceptions import DateMismatchError
 
 
@@ -379,13 +379,12 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                 # Dropdown to select which columns to edit (multi-select)
                 columns_to_edit = st.multiselect("Selezionare le colonne da modificare:", columns_to_show, key=f"multiselect_{name}")
 
-                # Create a form for editing the selected columns
                 with st.form(f"edit_row_form_{name}"):
                     st.write("Modifica dell'ordine:", name)
 
                     # Create a dictionary to store new values
                     new_values = {}
-                    all_required_fields_filled = True
+                    new_value = None 
 
                     # Handle each selected column
                     for column in columns_to_edit:
@@ -402,11 +401,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                                 step = 1.0, 
                                                 format="%.0f",  # Format to display an int
                                                 key=input_key)
-                                    if row.original_index not in new_values:
-                                        new_values[row.original_index] = {
-                                            'values': {},
-                                        }
-                                    new_values[row.original_index]['values'][column] = new_value
+                                    new_values = add_new_value_lineitem(new_values, row, column, new_value)
 
                             elif column == "Lineitem price":
                                 for idx, row in name_df.iterrows():
@@ -417,55 +412,36 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                                 step = None, 
                                                 format="%.2f",  # Format to display an int
                                                 key=input_key)
-                                    if row.original_index not in new_values:
-                                        new_values[row.original_index] = {
-                                            'values': {},
-                                        }
-                                    new_values[row.original_index]['values'][column] = new_value
+                                    new_values = add_new_value_lineitem(new_values, row, column, new_value)
 
                             elif column == "Lineitem name": 
                                 for idx, row in name_df.iterrows():
                                     current_value = row[column]
                                     input_key = f"{column}_{name}_{idx}"
-                                    st.text_input(f"Valore attuale per {column} - {row['Lineitem sku']}: {current_value}",
+                                    new_value = st.text_input(f"Valore attuale per {column} - {row['Lineitem sku']}: {current_value}",
                                         value=str(current_value),
-                                        key=input_key
-                                    )
-                                    if row.original_index not in new_values:
-                                        new_values[row.original_index] = {
-                                            'values': {},
-                                        }
-                                    new_values[row.original_index]['values'][column] = new_value
+                                        key=input_key)  
+                                    new_values = add_new_value_lineitem(new_values, row, column, new_value)
                             
                             elif column == "Lineitem sku": 
                                 for idx, row in name_df.iterrows():
                                     current_value = row[column]
                                     input_key = f"{column}_{name}_{idx}"
-                                    st.text_input(
-                                        f"{f'Valore attuale per {column} - {row["Lineitem name"]}: {current_value}' if not pd.isna(current_value) else f'Inserire il valore di {column} per {row["Lineitem name"]}:'}",
+                                    new_value = st.text_input(
+                                        f'Valore attuale per {column} - {row["Lineitem name"]}: {current_value}' if not pd.isna(current_value) else f'Inserire il valore di {column} per {row["Lineitem name"]}:',
                                         value=str(current_value) if not pd.isna(current_value) else "015790000000",
-                                        key=input_key
-                                    )
-                                    if row.original_index not in new_values:
-                                        new_values[row.original_index] = {
-                                            'values': {},
-                                        }
-                                    new_values[row.original_index]['values'][column] = new_value
+                                        key=input_key)
+                                    new_values = add_new_value_lineitem(new_values, row, column, new_value)
 
                 
                             else: 
                                 for idx, row in name_df.iterrows():
                                     current_value = row[column]
                                     input_key = f"{column}_{name}_{idx}"
-                                    st.text_input(f"Valore attuale per {column} - {row['Lineitem name']}: {current_value}",
+                                    new_value = st.text_input(f"Valore attuale per {column} - {row['Lineitem name']}: {current_value}",
                                         value=str(current_value),
-                                        key=input_key
-                                    )
-                                    if row.original_index not in new_values:
-                                        new_values[row.original_index] = {
-                                            'values': {},
-                                        }
-                                    new_values[row.original_index]['values'][column] = new_value
+                                        key=input_key)
+                                    new_values = add_new_value_lineitem(new_values, row, column, new_value)
 
                         else:
                             # Special handling for Location field
@@ -477,33 +453,19 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                     options=["Firgun House", "LIL House", "LIL House London"],
                                     index=0 if pd.isna(current_value) else 
                                         ["Firgun House", "LIL House", "LIL House London"].index(current_value),
-                                    key=input_key
-                                )
+                                    key=input_key)
+                                new_values = add_new_value_others(new_values, name_df, column, new_value)
                                 
-
                             elif column == "Payment Method":
                                 current_value = name_df[column].values[0]
                                 input_key = f"{column}_{name}_0"
-                                
-                                # Split the current payment method on '+' and clean the options
-                                # if pd.notna(current_value):
-                                #     if st.session_state.metodo_pagamento is None:
-                                #         payment_options = [opt.strip() for opt in current_value.split('+')] 
-                                #     else:
-                                #         payment_options = [opt.strip() for opt in current_value.split('+')] + ([st.session_state.metodo_pagamento] 
-                                #                                                                                if st.session_state.metodo_pagamento not in [opt.strip() 
-                                #                                                                                                                             for opt in current_value.split('+')] else [])
-                                # else:
-                                #     payment_options = payments
-                                    
                                 new_value = st.selectbox(
                                     f"Selezionare {column}:",
                                     options=payments,
                                     index=0 if pd.isna(current_value) or not payments else 0,
-                                    key=input_key
-                                )
+                                    key=input_key)
+                                new_values = add_new_value_others(new_values, name_df, column, new_value)
                                 
-
                             elif column == "Total":
                                 if len(selected_rows) == 0:
                                     importo_pagato = float(name_df["Importo Pagato"].values[0])
@@ -514,39 +476,32 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                     step = None, 
                                     format="%.2f",  # Format to display the float with 2 decimal places
                                     key=input_key)
-                                
-                                    
+                                new_values = add_new_value_others(new_values, name_df, column, new_value)
+                                   
                             else:
                                 # For other non-Lineitem columns
                                 current_value = name_df[column].values[0]
+                                if pd.isna(current_value) or current_value == "nan":
+                                    display_value = ""
+                                else:
+                                    display_value = str(current_value)
                                 input_key = f"{column}_{name}_0"
                                 new_value = st.text_input(
                                     f"Valore attuale per {column}: {current_value}",
-                                    value=str(current_value) if pd.notna(current_value) else "",
-                                    key=input_key
-                                )
-                                
-                            
-                        # Apply the same value to all rows for non-Lineitem columns
-                        for _, row in name_df.iterrows():
-                            if row.original_index not in new_values:
-                                new_values[row.original_index] = {
-                                    'values': {},
-                                }
-                            new_values[row.original_index]['values'][column] = new_value
-        
-
+                                    value=display_value,
+                                    key=input_key)
+                                new_values = add_new_value_others(new_values, name_df, column, new_value)
+                                         
                     # Add a submit button
                     submit = st.form_submit_button(
-                        "Conferma Modifiche",
-                        disabled=not all_required_fields_filled
+                        "Conferma Modifiche"
                     )
 
                 section_placeholder = st.empty()
 
                 with section_placeholder.container():
                     # Store the submission state
-                    if submit and all_required_fields_filled:
+                    if submit: # and all_required_fields_filled:
 
                         if double_payment_method and "Payment Method" not in columns_to_edit:
                             st.error("È necessario compilare il campo Payment Method e scegliere un unico metodo di pagamento")
@@ -904,13 +859,12 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                 # Dropdown to select which columns to edit (multi-select)
                 columns_to_edit = st.multiselect("Selezionare le colonne da modificare:", columns_to_show, key=f"multiselect_{name}")
 
-                # Create a form for editing the selected columns
                 with st.form(f"edit_row_form_{name}"):
                     st.write("Modifica dell'ordine:", name)
 
                     # Create a dictionary to store new values
                     new_values = {}
-                    all_required_fields_filled = True
+                    new_value = None 
 
                     # Handle each selected column
                     for column in columns_to_edit:
@@ -927,11 +881,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                                 step = 1.0, 
                                                 format="%.0f",  # Format to display an int
                                                 key=input_key)
-                                    if row.original_index not in new_values:
-                                        new_values[row.original_index] = {
-                                            'values': {},
-                                        }
-                                    new_values[row.original_index]['values'][column] = new_value
+                                    new_values = add_new_value_lineitem(new_values, row, column, new_value)
 
                             elif column == "Lineitem price":
                                 for idx, row in name_df.iterrows():
@@ -942,55 +892,36 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                                 step = None, 
                                                 format="%.2f",  # Format to display an int
                                                 key=input_key)
-                                    if row.original_index not in new_values:
-                                        new_values[row.original_index] = {
-                                            'values': {},
-                                        }
-                                    new_values[row.original_index]['values'][column] = new_value
+                                    new_values = add_new_value_lineitem(new_values, row, column, new_value)
 
                             elif column == "Lineitem name": 
                                 for idx, row in name_df.iterrows():
                                     current_value = row[column]
                                     input_key = f"{column}_{name}_{idx}"
-                                    st.text_input(f"Valore attuale per {column} - {row['Lineitem sku']}: {current_value}",
+                                    new_value = st.text_input(f"Valore attuale per {column} - {row['Lineitem sku']}: {current_value}",
                                         value=str(current_value),
-                                        key=input_key
-                                    )
-                                    if row.original_index not in new_values:
-                                        new_values[row.original_index] = {
-                                            'values': {},
-                                        }
-                                    new_values[row.original_index]['values'][column] = new_value
-                
-                            #aggiunto dopo
+                                        key=input_key)  
+                                    new_values = add_new_value_lineitem(new_values, row, column, new_value)
+                            
                             elif column == "Lineitem sku": 
                                 for idx, row in name_df.iterrows():
                                     current_value = row[column]
                                     input_key = f"{column}_{name}_{idx}"
-                                    st.text_input(
-                                        f"{f'Valore attuale per {column} - {row["Lineitem name"]}: {current_value}' if not pd.isna(current_value) else f'Inserire il valore di {column} per {row["Lineitem name"]}:'}",
+                                    new_value = st.text_input(
+                                        f'Valore attuale per {column} - {row["Lineitem name"]}: {current_value}' if not pd.isna(current_value) else f'Inserire il valore di {column} per {row["Lineitem name"]}:',
                                         value=str(current_value) if not pd.isna(current_value) else "015790000000",
-                                        key=input_key
-                                    )
-                                    if row.original_index not in new_values:
-                                        new_values[row.original_index] = {
-                                            'values': {},
-                                        }
-                                    new_values[row.original_index]['values'][column] = new_value
-                            
+                                        key=input_key)
+                                    new_values = add_new_value_lineitem(new_values, row, column, new_value)
+
+                
                             else: 
                                 for idx, row in name_df.iterrows():
                                     current_value = row[column]
                                     input_key = f"{column}_{name}_{idx}"
-                                    st.text_input(f"Valore attuale per {column} - {row['Lineitem name']}: {current_value}",
+                                    new_value = st.text_input(f"Valore attuale per {column} - {row['Lineitem name']}: {current_value}",
                                         value=str(current_value),
-                                        key=input_key
-                                    )
-                                    if row.original_index not in new_values:
-                                        new_values[row.original_index] = {
-                                            'values': {},
-                                        }
-                                    new_values[row.original_index]['values'][column] = new_value
+                                        key=input_key)
+                                    new_values = add_new_value_lineitem(new_values, row, column, new_value)
 
                         else:
                             # Special handling for Location field
@@ -999,36 +930,22 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                 input_key = f"{column}_{name}_0"
                                 new_value = st.selectbox(
                                     f"Selezionare {column}:",
-                                    options=["Firgun House", "LIL House"],
+                                    options=["Firgun House", "LIL House", "LIL House London"],
                                     index=0 if pd.isna(current_value) else 
-                                        ["Firgun House", "LIL House"].index(current_value),
-                                    key=input_key
-                                )
+                                        ["Firgun House", "LIL House", "LIL House London"].index(current_value),
+                                    key=input_key)
+                                new_values = add_new_value_others(new_values, name_df, column, new_value)
                                 
-
                             elif column == "Payment Method":
                                 current_value = name_df[column].values[0]
                                 input_key = f"{column}_{name}_0"
-                                
-                                # Split the current payment method on '+' and clean the options
-                                # if pd.notna(current_value):
-                                #     if st.session_state.metodo_pagamento is None:
-                                #         payment_options = [opt.strip() for opt in current_value.split('+')] 
-                                #     else:
-                                #         payment_options = [opt.strip() for opt in current_value.split('+')] + ([st.session_state.metodo_pagamento] 
-                                #                                                                                if st.session_state.metodo_pagamento not in [opt.strip() 
-                                #                                                                                                                             for opt in current_value.split('+')] else [])
-                                # else:
-                                #     payment_options = payments
-                                    
                                 new_value = st.selectbox(
                                     f"Selezionare {column}:",
                                     options=payments,
                                     index=0 if pd.isna(current_value) or not payments else 0,
-                                    key=input_key
-                                )
+                                    key=input_key)
+                                new_values = add_new_value_others(new_values, name_df, column, new_value)
                                 
-
                             elif column == "Total":
                                 if len(selected_rows) == 0:
                                     importo_pagato = float(name_df["Importo Pagato"].values[0])
@@ -1039,36 +956,28 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                     step = None, 
                                     format="%.2f",  # Format to display the float with 2 decimal places
                                     key=input_key)
-                                
-                                    
+                                new_values = add_new_value_others(new_values, name_df, column, new_value)
+                                   
                             else:
                                 # For other non-Lineitem columns
                                 current_value = name_df[column].values[0]
+                                if pd.isna(current_value) or current_value == "nan":
+                                    display_value = ""
+                                else:
+                                    display_value = str(current_value)
                                 input_key = f"{column}_{name}_0"
                                 new_value = st.text_input(
                                     f"Valore attuale per {column}: {current_value}",
-                                    value=str(current_value) if pd.notna(current_value) else "",
-                                    key=input_key
-                                )
-                                
-                            
-                        # Apply the same value to all rows for non-Lineitem columns
-                        for _, row in name_df.iterrows():
-                            if row.original_index not in new_values:
-                                new_values[row.original_index] = {
-                                    'values': {},
-                                }
-                            new_values[row.original_index]['values'][column] = new_value
-        
-
+                                    value=display_value,
+                                    key=input_key)
+                                new_values = add_new_value_others(new_values, name_df, column, new_value)
+                                         
                     # Add a submit button
                     submit = st.form_submit_button(
-                        "Conferma Modifiche",
-                        disabled=not all_required_fields_filled
+                        "Conferma Modifiche"
                     )
-
-                # Store the submission state
-                if submit and all_required_fields_filled:
+                    
+                if submit: # and all_required_fields_filled:
 
                     if double_payment_method and "Payment Method" not in columns_to_edit:
                         st.error("È necessario compilare il campo Payment Method e scegliere un unico metodo di pagamento")
