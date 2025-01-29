@@ -302,7 +302,7 @@ class PaymentMatcher:
             df_check = self.check_double_payments(df_check)
 
         df_check = self.check_resi(df_check)
-        df_check, _ = check_partially_refunded(df_check)
+        # df_check, _ = check_partially_refunded(df_check)
 
         if valuta == True:
             df_check = self.check_valuta(df_check) 
