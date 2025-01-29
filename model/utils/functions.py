@@ -89,7 +89,6 @@ def check_partially_refunded(df_check, pagamenti=None):
                     df_check.loc[name_mask, "Total"] = amount
                     df_check.loc[name_mask, "CHECK"] = "VERO"
                     pagamenti.loc[numero_mask, "CHECK"] = "VERO"
-                    print(df_check.loc[name_mask, "Name"], df_check.loc[name_mask, "Total"], new_total)
                 
                 elif abs(new_total - amount) <= 1 and new_total <= 1:
                     df_check.loc[name_mask, "Total"] = amount

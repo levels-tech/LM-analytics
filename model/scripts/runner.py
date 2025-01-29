@@ -52,7 +52,6 @@ class MatcherRunner:
         
         # Apply CHECK = "VALORE NAN" to all rows with the selected names
         self.df_ordini_all.loc[self.df_ordini_all["Name"].isin(final_names), "CHECK"] = "VALORE NAN"
-        print("nanna", self.df_ordini_all[self.df_ordini_all["Lineitem name"] == "Piercing Party"]["CHECK"])
         
         return self.df_ordini_all
 
@@ -207,7 +206,6 @@ class MatcherRunner:
             self.df_ordini_all['Total'] = self.df_ordini_all.groupby('Name')['Total'].transform(lambda x: x.where(x.index == x.index.min(), np.nan))
 
             # self.df_ordini_all.to_excel("ordini.xlsx")
-            print("paggg", df_pagamenti[df_pagamenti["N° ordine commerciante"] == "ra67nFAe7oNLEGo6q3GAvTyUY"][["Name", "CHECK", "Importo Pagato"]])
 
             return self.df_ordini_all, df_pagamenti, self.columns
         

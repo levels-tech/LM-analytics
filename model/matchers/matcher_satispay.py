@@ -121,7 +121,6 @@ class SatispayMatcher(PaymentMatcher):
         df_final_check_negozio.loc[mask & df_final_check_negozio["Payment Method"].str.contains("Satispay"), "Payment Method"] = "Satispay"
 
 
-        # print("satispay", df_full, df_online, df_check[["Name", "Data", "Numero Pagamento", "Importo Pagato", "Brand", "CHECK"]])
         df_full_online = pd.merge(df_full, df_check_online[["Name", "Data", "Numero Pagamento", "Importo Pagato", "Brand", "CHECK"]], left_on = "description", right_on = "Numero Pagamento", how = "inner")
         df_full_negozio = pd.merge(df_full, df_final_check_negozio[["Name", "Data", "Numero Pagamento", "Importo Pagato", "Brand", "CHECK"]], left_on = ["payment_date", "description"], right_on = ["Data", "Numero Pagamento"], how = "inner")
         
@@ -130,7 +129,6 @@ class SatispayMatcher(PaymentMatcher):
         df_full = pd.concat([df_full_negozio, df_full_online])
         
         df_full = df_full.drop_duplicates(subset=columns)
-        print("satispay", df_full)
         df_full["CHECK"] = df_full["CHECK"].fillna("NON TROVATO")
         df_full["Metodo"] = "Satispay"
         

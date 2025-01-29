@@ -57,7 +57,6 @@ class OrderSummary:
 
     def check_names_pagamenti(self, df_pagamenti):
 
-        print(df_pagamenti.columns)
         # df_pagamenti = df_pagamenti.sort_values(by = "Data")
         grouped_pagamenti = (df_pagamenti.groupby("Name", as_index=False).agg({"Importo Pagato": "sum",  # Sum over 'Importo Pagato'
                                                                                 "Numero Pagamento": "first",   # Take the first value of 'description'
@@ -167,8 +166,6 @@ class OrderSummary:
                     # Create "Data Giorno" column
                     paid_at_index = lil.columns.get_loc("Paid at")
                     lil.insert(paid_at_index + 1, "Data Giorno", lil["Paid at"].apply(self.reformat_date))
-
-                    print("vediamo se funziona")
                     
                     # Filter columns to keep only the desired ones
                     lil = lil[df_columns]
@@ -198,7 +195,6 @@ class OrderSummary:
 
                 if mask_lil_p.any():
                     for p in self.pagamenti["Metodo"].unique():
-                        print("ppppp", p)
                         payment_name_lil = p.split()[0] + "_LIL"
 
                         if p == "Cash": 
@@ -385,15 +381,11 @@ class OrderSummary:
 
         # Get unique values from 'Ordini LIL' sheet in column AX
         ordini_sheet = wb['Ordini ' + store_name]  # Load the 'Ordini LIL' sheet
-        print(ordini_sheet)
         locations_sheet = [cell.value for cell in ordini_sheet['BD'] if cell.value is not None]
-        print(locations_sheet)
         unique_locations_sheet = set(locations_sheet)
-        print(unique_locations_sheet)
 
         locations = [location for location in unique_locations_sheet if location in title_of_locations]
         locations.sort()
-        print(locations, "locations")
 
         # Prepare the summary sheet
         summary_sheet.merge_cells(f'L{start_row-1}:R{start_row-1}') 
@@ -531,8 +523,6 @@ class OrderSummary:
         # # Process LIL and AGEE data
         # df_lil = self.process_location_df(df_ordini_fill, \'Ordini {store_name}\', exclude_strings)
         # df_agee = self.process_location_df(df_ordini_fill, 'Ordini AGEE', exclude_strings)
-
-        # print("locccc", df_lil)
 
         start_row = 3
         start_row = self.create_location_stats(workbook, start_row, summary_sheet, 'LIL')

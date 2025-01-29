@@ -38,14 +38,11 @@ def check_files(file, name, mese, anno):
         if name == "Bonifici":
             f = find_header_row(f_file, "Importo")
         else:
-            print(name)
             # Detect the delimiter
             try:
-                print("virgola")
                 f_file.seek(0)  # Reset file pointer
                 f = pd.read_csv(f_file, delimiter=",", dtype={date_column[name]: "string"})
             except:
-                print("punto e virgola")
                 f_file.seek(0)  # Reset file pointer again
                 f = pd.read_csv(f_file, delimiter=";", dtype={date_column[name]: "string"})
         
