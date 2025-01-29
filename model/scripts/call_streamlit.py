@@ -2,7 +2,6 @@
 
 import streamlit as st
 import pandas as pd
-import csv
 
 from model.scripts.ordini import Ordini
 from model.scripts.runner import MatcherRunner
@@ -18,6 +17,11 @@ from model.matchers.matcher_shopify import ShopifyMatcher
 
 from model.utils.exceptions import DateMismatchError
 from model.utils.functions import reformat_date, find_header_row
+
+
+#####################################################################################
+# CONTROLLA I DATI DEI FILE DI INPUT
+#####################################################################################
 
 def check_files(file, name, mese, anno):
 
@@ -64,7 +68,10 @@ def check_files(file, name, mese, anno):
             return True
         
     
-        
+#####################################################################################
+# PREPROCESS DI ORDINI, PAGAMENTI E MATCH
+#####################################################################################        
+
 def run(order_files, payment_files, month, year):
     #ordini
     print("ordini iniziati")
@@ -108,6 +115,10 @@ def run(order_files, payment_files, month, year):
         raise e
 
 
+#########################################################################################################################
+# CONTROLLA SE CI SONO MISSING FIELDS TRA ("Paid at", "Shipping Country", "Location" e "Lineitem sku") E DI CHE TIPO SONO
+#########################################################################################################################
+
 ## Controlla che "Paid at", "Shipping Country", "Location" e "Lineitem sku" non siano NaN
 ## Controlla che "Payment Method" non contenga "+" 
 def missing_fields(df, nome, exclude):
@@ -141,20 +152,7 @@ def missing_fields(df, nome, exclude):
 
 
 def add_row(df, diff, payment, nome, last_index):
-    """
-    Add a new row to the dataframe based on an existing row for a given name,
-    with updated Original_Index.
-    
-    Parameters:
-    df (pandas.DataFrame): Input dataframe
-    diff (float): New value for the Total column
-    payment (str): New value for the Payment Method column
-    nome (str): Name to match in the Name column
-    last_index (int): Last used Original_Index value
-    
-    Returns:
-    pandas.DataFrame: DataFrame with the new row added
-    """
+
     # Find the first row matching the name
     template_row = df[df['Name'] == nome].iloc[0].copy()
     
@@ -217,6 +215,11 @@ def add_row(df, diff, payment, nome, last_index):
 
     return df
 
+
+## Modifica lo stato dei pagamenti associati agli ordini (Lil o Agee) e trasforma i pagamenti falsi in non trovati.
+## Restituisce il dataframe dei pagamenti aggiornato
+## Usata per inserire i pagamenti da ricontrollare nella sezione "Pagamenti".
+
 def aggiungi_pagamenti(df, nuovi_lil, nuovi_agee):
     print("Entering aggiungi pagamenti")  # Debug print to indicate the function is called
     
@@ -234,11 +237,14 @@ def aggiungi_pagamenti(df, nuovi_lil, nuovi_agee):
   
     return df
 
+#########################################################################################################
+# AGGIORNA SIA IL DF DI ORDINI SIA IL DF DI PAGAMENTI (QUANDO NECESSARIO) DOPO OGNI CONTROLLO DELL'UTENTE
+#########################################################################################################
 
 def update_df(df, new_value, nome, pagamenti = None):
     print("Entering update_df")  # Debug print to indicate the function is called
     
-    colonne_solo_idx = ['Lineitem quantity', 'Lineitem name', 'Lineitem price', 'Lineitem compare at price',]   
+    colonne_solo_idx = ['Lineitem quantity', 'Lineitem name', 'Lineitem price', 'Lineitem compare at price']   
 
     if pagamenti is None:
         # Get all row indices from new_value
@@ -302,32 +308,29 @@ def update_df(df, new_value, nome, pagamenti = None):
 
                 rows_esistenti = df[df["Name"] == name] 
             
-                # data_pagamenti = rows_esistenti["Paid at"].values[0]
-                totale_pagamenti = rows_esistenti["Total"].values[0]
-                skus_pagamenti = rows_esistenti["Lineitem sku"].tolist()
-                quantities_pagamenti = rows_esistenti["Lineitem quantity"].tolist()
-                # country_pagamenti = rows_esistenti["Shipping Country"].values[0]
-                metodo_pagamenti = rows_esistenti["Payment Method"].values[0]
-                # location_pagamenti = rows_esistenti["Location"].values[0]
-                refund_pagamenti = rows_esistenti["Refunded Amount"].values[0]
-                brand_pagamenti = rows_esistenti["Brand"].values[0]
+                totale_ordine = rows_esistenti["Total"].values[0]
+                skus_ordine = rows_esistenti["Lineitem sku"].tolist()
+                quantities_ordine = rows_esistenti["Lineitem quantity"].tolist()
+                metodo_ordine = rows_esistenti["Payment Method"].values[0]
+                refund_ordine = rows_esistenti["Refunded Amount"].values[0]
+                brand_ordine = rows_esistenti["Brand"].values[0]
 
-                if metodo == metodo_pagamenti:  #il metodo di pagamento aggiunto è uguale a quello esistente
+                if metodo == metodo_ordine:                                           #il metodo di pagamento aggiunto è uguale a quello esistente
                     existing_indices = df[df["Name"] == name].index
-                    df.loc[existing_indices[0], "Total"] = float(totale_pagamenti) + float(totale)
+                    df.loc[existing_indices[0], "Total"] = float(totale_ordine) + float(totale)
                     pagamenti.loc[pagamenti["original_index"] == nome, "Brand"] = "Ordini "+str(brand)
 
                     #SKUs che già esistono nell'ordine
                     matched_skus = set()
                     for i, sku in enumerate(skus):
-                        matching_positions = [j for j, s_p in enumerate(skus_pagamenti) if str(s_p) == str(sku)]
+                        matching_positions = [j for j, s_p in enumerate(skus_ordine) if str(s_p) == str(sku)]
                         
                         if matching_positions:
                             matched_skus.add(sku)
                             for pos in matching_positions:
                                 if refund != 0:
-                                    df.loc[existing_indices[pos], "Refunded Amount"] = refund_pagamenti + refund
-                                if float(quantities_pagamenti[pos]) == 0:
+                                    df.loc[existing_indices[pos], "Refunded Amount"] = refund_ordine + refund
+                                if float(quantities_ordine[pos]) == 0:
                                     df.loc[existing_indices[pos], "Lineitem quantity"] = int(quantities[i])
                                     break
 
@@ -345,7 +348,7 @@ def update_df(df, new_value, nome, pagamenti = None):
                                 "Refunded Amount": float(refund),
                                 "Location": str(location),
                                 "Payment Method": str(metodo),
-                                "Brand": str(brand_pagamenti),
+                                "Brand": str(brand_ordine),
                                 "CHECK": "VERO",
                             }
                             new_rows.append(new_row)
@@ -353,16 +356,16 @@ def update_df(df, new_value, nome, pagamenti = None):
                         if new_rows:
                             df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) 
                         
-                else: #metodo di pagamento aggiunto è diverso da quello dell'ordine - create new rows based on SKU matching
+                else: #metodo di pagamento aggiunto è diverso da quello dell'ordine - create new rows
                     first_row = True
                     pagamenti.loc[pagamenti["original_index"] == nome, "Brand"] = "Ordini "+str(brand)
                     
                     for i, sku in enumerate(skus):
-                        matching_positions = [j for j, s_p in enumerate(skus_pagamenti) if str(s_p) == str(sku)]
+                        matching_positions = [j for j, s_p in enumerate(skus_ordine) if str(s_p) == str(sku)]
                         
-                        if matching_positions:
+                        if matching_positions:                                                              #se lo sku è già presente nell'ordine
                             for pos in matching_positions:
-                                new_quantity = 0 if float(quantities_pagamenti[pos]) != 0 else int(quantities[i])
+                                new_quantity = 0 if float(quantities_ordine[pos]) != 0 else int(quantities[i])
                                 
                                 new_row = {
                                     "Name": str(name),
@@ -375,7 +378,7 @@ def update_df(df, new_value, nome, pagamenti = None):
                                     "Refunded Amount": float(refund),
                                     "Location": str(location),
                                     "Payment Method": str(metodo),
-                                    "Brand": "Ordini " + str(brand_pagamenti),
+                                    "Brand": "Ordini " + str(brand_ordine),
                                     "CHECK": "VERO",
                                 }
                                 new_rows.append(new_row)
@@ -410,7 +413,7 @@ def update_df(df, new_value, nome, pagamenti = None):
 
     return df, pagamenti
     
-def generate_excel(df_ordini_all, pp, filename):
-    order_summary = OrderSummary(df_ordini_all, pp, filename)
+def generate_excel(df_ordini_all, pag, filename):
+    order_summary = OrderSummary(df_ordini_all, pag, filename)
     order_summary.create_files()
     return filename
