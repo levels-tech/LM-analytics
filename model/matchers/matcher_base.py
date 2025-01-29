@@ -34,19 +34,15 @@ class PaymentMatcher:
             elif name == "Qromo":
                 csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))
                 try:
-                    print("virgola")
                     f = pd.read_csv(csv_file, delimiter=",", dtype={date_column[name]: "string"}, thousands='.', decimal=",")
                 except:
-                    print("punto e virgola")
                     csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))  # Create a new instance
                     f = pd.read_csv(csv_file, delimiter=";", dtype={date_column[name]: "string"}, thousands='.', decimal=",")            
             else:
                 csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))
                 try:
-                    print("virgola")
                     f = pd.read_csv(csv_file, delimiter=",", dtype={date_column[name]: "string"})
                 except:
-                    print("punto e virgola")
                     csv_file = io.StringIO(f_file.getvalue().decode("utf-8"))  # Create a new instance
                     f = pd.read_csv(csv_file, delimiter=";", dtype={date_column[name]: "string"})
             
@@ -229,41 +225,38 @@ class PaymentMatcher:
     def check_valuta(self, df_check):
 
         get_valute = {
-            "USD": 0.919548,
-            "GBP": 1.172707,
-            "CHF": 1.046209,
-            "SEK": 0.087655,
-            "DKK": 0.134034,
-            "HUF": 0.002563,
-            "CZK": 0.040004,
-            "JPY": 0.006126,
-            "NOK": 0.086106, 
-            "PLN": 0.231678, 
-            "TRY": 0.028939,
-            "SGD": 0.68849, 
-            "NZD": 0.560897, 
-            "HKD": 0.117784,
-            "CAD": 0.675812, 
-            "AUD": 0.609449,
-            "ILS": 0.247803, 
-            "RON": 0.2011
+                "AUD": (0.609042, 0.005449),
+                "CAD": (0.673894, 0.006610),
+                "CHF": (1.049503, 0.018045),
+                "CZK": (0.039744, 0.000272),
+                "DKK": (0.134027, 0.000033),
+                "GBP": (1.183534, 0.013415),
+                "HKD": (0.119108, 0.002499),
+                "HUF": (0.002513, 0.000054),
+                "ILS": (0.251390, 0.007175),
+                "JPY": (0.006098, 0.000134),
+                "NOK": (0.085726, 0.001006),
+                "NZD": (0.557156, 0.007111),
+                "PLN": (0.232665, 0.001188),
+                "RON": (0.201009, 0.000090),
+                "SEK": (0.087288, 0.000892),
+                "SGD": (0.693563, 0.008859),
+                "TRY": (0.027928, 0.001020),
+                "USD": (0.928882, 0.018645)         
         }
 
         df_check["Euro"] = 0.0 
 
         for index, row in df_check.iterrows():
-            if row["Valuta"] != "EUR":
-                print("valuta diversa")
-                print(row[["CHECK", "Total", "Importo Pagato"]])
             if row["CHECK"] == "FALSO" and row["Valuta"] != "EUR":
-                print("Valuta")
-                row["Euro"] = row["Importo Pagato"] * get_valute[row["Valuta"]]
-                if (row["Total"] - 10) < row["Euro"] < (row["Total"] + 10):
-                    print("Valuta ok")
+                avg_cambio = get_valute[row["Valuta"]][0]
+                std_cambio = get_valute[row["Valuta"]][1]
+                row["Euro"] = row["Importo Pagato"] * avg_cambio
+                # if (row["Total"] - 10) < row["Euro"] < (row["Total"] + 10):
+                if  (row["Euro"] * (1 - std_cambio)) < row["Total"] < (row["Euro"] * (1 + std_cambio)):
                     df_check.at[index, "Importo Pagato"] = row["Euro"] 
                     df_check.at[index, "CHECK"] = "VERO" 
                 else:
-                    print("Valuta non ok")
                     df_check.at[index, "CHECK"] = "VALUTA_" + row["Valuta"]
         df_check = df_check.drop("Euro", axis = 1)
 
