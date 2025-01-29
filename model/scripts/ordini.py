@@ -288,21 +288,6 @@ class Ordini:
                 else:
                     self.df.loc[name_mask, 'CHECK'] = "FALSO" 
 
-
-    def handle_nan(self):
-
-        fill_columns = ["Subtotal", "Shipping", "Total", "Discount Amount", "Refunded Amount", "Outstanding Balance"]
-        self.df[fill_columns] = self.df[fill_columns].fillna(0)
-        
-        colonne_non_na = ["Name", "Paid at", "Lineitem quantity", "Lineitem name", "Lineitem price", 
-                        "Payment Method", "Location", "Shipping Country", "Payment References"]
-        
-        rilevanti = self.df[(self.df["CHECK"] != "ESCLUSO")]["Name"].unique()
-
-        mask_rilevanti = self.df["Name"].isin(rilevanti)
-        nan_mask = self.df[mask_rilevanti][colonne_non_na].isna().any(axis=1)
-        self.df.loc[mask_rilevanti & nan_mask, "CHECK"] = "VALORE NAN"
-
     def handle_nan(self):
         fill_columns = ["Subtotal", "Shipping", "Total", "Discount Amount", "Refunded Amount", "Outstanding Balance"]
         self.df[fill_columns] = self.df[fill_columns].fillna(0)

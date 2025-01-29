@@ -75,7 +75,7 @@ def run(order_files, payment_files, month, year):
     ordini, df_columns = ordini_processor.preprocess() 
     print("ordini finiti")
 
-    # st.session_state.df_columns = df_columns
+    st.session_state.df_columns = df_columns
 
     try:
         #run matchers

@@ -73,8 +73,6 @@ if 'pagamenti_da_aggiungere_agee' not in st.session_state:
 # Title of the page
 st.title("Check di Pagamenti LIL Milan e AGEE")
 
-st.json(st.session_state)
-
 # Create a container
 upload_container = st.container()
 
@@ -1747,7 +1745,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                         
 ####EXCEL            
-        proceed_excel = count_pagamenti >= 0 #len(p) 
+        proceed_excel = count_pagamenti >= len(p) 
 
         if proceed_excel:
             
