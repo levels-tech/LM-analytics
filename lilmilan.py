@@ -1189,9 +1189,8 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     proceed_pagamenti = count_ordini >= 1 #len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
 
     if proceed_pagamenti:  # Or your specific condition for moving to the next section
-        section_placeholder.empty()  # Clears all contents of the placeholder
-        # Proceed to the next section
-        # st.write("Moving to the next section...")
+        
+        all_required_fields_filled = True
 
         colonne_essenziali_pagamenti =  ['Name', 'Paid at', 'Lineitem quantity', 'Lineitem sku', "Shipping Country", 'Location', "Brand"]  
         
