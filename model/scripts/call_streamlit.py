@@ -220,8 +220,8 @@ def add_row(df, diff, payment, nome, last_index):
 ## Restituisce il dataframe dei pagamenti aggiornato
 ## Usata per inserire i pagamenti da ricontrollare nella sezione "Pagamenti".
 
-def aggiungi_pagamenti(df, nuovi_lil, nuovi_agee):
-    print("Entering aggiungi pagamenti")  # Debug print to indicate the function is called
+def aggiorna_pagamenti(df, nuovi_lil, nuovi_agee):
+    print("Entering aggiorna pagamenti")  # Debug print to indicate the function is called
     
     if nuovi_lil:
         for numero in nuovi_lil.keys():
@@ -412,6 +412,62 @@ def update_df(df, new_value, nome, pagamenti = None):
                 print("New row added:", new_rows)          
 
     return df, pagamenti
+
+def validate_payment_fields(values, total_quantity=1):
+    """
+    Valida i campi dell'ordine e restituisce una tupla (is_valid, missing_fields)
+    
+    Args:
+        values: Lista dei valori dell'ordine [order_num, paid_at, total, skus, quantities, lineitem_names, country, payment_method, location, brand]
+        total_quantity: Numero di lineitem diversi nell'ordine
+    
+    Returns:
+        tuple: (bool, list) - (True se tutti i campi sono validi, lista dei campi mancanti)
+    """
+    missing_fields = []
+    
+    # Definizione dei campi richiesti e loro validazione
+    # indice: (nome_campo, funzione_validazione)
+    # indice: (nome_campo, funzione_validazione(funzione_validazione()))
+
+    required_fields = {
+        0: ("Numero Ordine", lambda x: x is not None and str(x).strip()),
+        1: ("Data", lambda x: x is not None and str(x).strip()),
+        3: ("SKU", lambda x: validate_lineitem_field(x, total_quantity, lambda i: len(str(i)) == 12 and str(i).isdigit())),
+        4: ("Quantità", lambda x: validate_lineitem_field(x, total_quantity, lambda i: i is not None and int(i) > 0)),
+        6: ("Shipping Country", lambda x: x is not None and len(str(x)) == 2 and str(x).isalpha()),
+        8: ("Location", lambda x: x is not None and str(x).strip()),
+        9: ("Brand", lambda x: x is not None and str(x).strip())
+    }
+    
+    for pos, (field_name, validator) in required_fields.items():
+        try:
+            if pos >= len(values) or not validator(values[pos]):
+                missing_fields.append(field_name)
+        except (ValueError, TypeError, IndexError):
+            missing_fields.append(field_name)
+    
+    return len(missing_fields) == 0, missing_fields
+
+def validate_lineitem_field(field_value, total_quantity, validator_func):
+    """
+    Valida un campo lineitem (SKU o Quantità)
+    
+    Args:
+        field_value: Lista dei valori del campo per ogni lineitem
+        total_quantity: Numero totale di lineitem attesi
+        validator_func: Funzione di validazione per singolo valore
+    
+    Returns:
+        bool: True se il campo è valido per tutti i lineitem, False altrimenti
+    """
+    if not isinstance(field_value, list):
+        return False
+    
+    if len(field_value) != total_quantity:
+        return False
+
+    return all(validator_func(item) for item in field_value)
     
 def generate_excel(df_ordini_all, pag, filename):
     order_summary = OrderSummary(df_ordini_all, pag, filename)
