@@ -7,8 +7,10 @@ import pickle
 
 # Your original imports should work now
 from model.scripts.call_streamlit import run, update_df, check_files, missing_fields, add_row, aggiorna_pagamenti, generate_excel, validate_payment_fields
+from model.scripts.pagination_pagamenti import handle_paginated_payments
 from model.utils.exceptions import DateMismatchError
 from UI.state_manager import SessionStateManager
+from UI.payment_manager import PaymentManager
 
 def auto_save_on_change():
     """
@@ -1496,10 +1498,12 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
     proceed_pagamenti = orders_count >= len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
 
-    if proceed_pagamenti:  # Or your specific condition for moving to the next section
-        
+    if proceed_pagamenti: 
         if section_placeholder is not None:
             section_placeholder.empty()  # Clears all contents of the placeholder
+
+         # Inizializza il payment manager
+        payment_manager = PaymentManager()
 
         colonne_essenziali_pagamenti =  ['Name', 'Paid at', 'Lineitem quantity', 'Lineitem sku', "Shipping Country", 'Location', "Brand"]  
         
@@ -1510,20 +1514,36 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
             st.session_state.pagamenti = aggiorna_pagamenti(st.session_state.pagamenti, st.session_state.pagamenti_da_aggiungere_lil, st.session_state.pagamenti_da_aggiungere_agee)
             st.session_state.aggiorna_pagamenti_done = True
 
-        pagamenti_da_ricontrollare_df =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] == "NON TROVATO")].copy()
-
+        # Inizializza i pagamenti da controllare
+        payment_manager.initialize_payments_to_check(st.session_state.pagamenti)
+        
+        # Ottieni tutti i pagamenti da controllare con il loro stato
+        all_payments = payment_manager.get_payments_to_display()
         num_pagamenti_totale = len(st.session_state.pagamenti)
-        count_pagamenti_controllati = 0
+        count_pagamenti_controllati = payment_manager.get_processed_count()
 
         #PAGAMENTI
-        if len(pagamenti_da_ricontrollare_df) > 0: 
+        if len(all_payments) > 0: 
+            
             st.write("")
             st.subheader("Pagamenti da controllare")
-                
-            num_pagamenti_da_ricontrollare = len(pagamenti_da_ricontrollare_df)
+            
+            num_pagamenti_da_ricontrollare = len(all_payments)
             st.write(f"{num_pagamenti_da_ricontrollare} pagamenti su {num_pagamenti_totale}")
             
-            for _, pagamento in pagamenti_da_ricontrollare_df.iterrows():
+            # Mostra barra di progresso
+            total_to_check = payment_manager.get_total_payments()
+            current_progress = payment_manager.get_processed_count() / total_to_check if total_to_check > 0 else 0
+            st.progress(current_progress)
+
+            # Ottiene i pagamenti paginati per la pagina corrente
+            paginated_payments = handle_paginated_payments(
+                all_payments,
+                num_pagamenti_totale
+            )
+
+            # Itera solo sui pagamenti della pagina corrente
+            for _, pagamento in paginated_payments.iterrows():
                 all_required_fields_filled = True                       ## Flag per verificare che tutti i parametri necessari sono inseriti
                 idx = pagamento["original_index"]
                 metodo = pagamento['Metodo']
@@ -1531,6 +1551,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                 with st.container():
                     st.markdown("---")
+
                     st.subheader(f"Pagamento con {metodo} di {importo_pagato}")
 
                     # Display current payment info
@@ -1545,59 +1566,68 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     st.dataframe(pd.DataFrame([pagamento])[colonne_pag],
                                 use_container_width=True)
 
-                    # Create unique keys for each payment's inputs
+                    # Ottieni eventuali modifiche in sospeso per questo pagamento
+                    pending_update = payment_manager.get_pending_update(idx)
+                    print("payment:", importo_pagato ,"pending_update", pending_update)
                     
-                    choice_key = f"widget_include_choice_{idx}"
-                    total_quantity_key = f"widget_total_quantities{idx}"
-                    order_num_key = f"widget_order_num_{idx}"
-                    paid_at_key = f"widget_paid_at_{idx}"
-                    country_key = f"widget_country_{idx}" 
-                    location_key = f"widget_location_{idx}"
-                    brand_key = f"widget_brand_{idx}"
-                    
-                    ## TODO: Test horizontal=True e index = 1 (preselected to yes) 
-                    # Radio buttons for including payment
-                    include_choice = st.radio("Pagamento da includere negli ordini?",
-                                            options=["No", "Si"],
-                                            key=choice_key)
+                    # Choice for including payment con default basato su pending_update
+                    has_values = pending_update and any(x is not None for x in pending_update)
+                    default_include = 1 if has_values else 0
+                    include_choice = st.radio(
+                        "Pagamento da includere negli ordini?",
+                        options=["No", "Si"],
+                        index=default_include,
+                        key=f"widget_include_choice_{idx}"
+                    )
 
                     # Handles the creation of the form for all the values
                     # Handles No case for payment exclusion
                     if include_choice == "Si":
-                        new_values = [None, None, None, None, None, None, None, None, None, None]  # Initialize list to hold order number, date, quantities, sku, country and location
+                        new_values = [None] * 10                                  
                         st.write("Inserire le seguenti informazioni")
+
 
                         #Name
                         if metodo == "Shopify Payments":
                             order_num = pagamento["Numero Pagamento"]
                         else:
-                            order = st.text_input("Inserire il numero di ordine relativo al pagamento (senza #)",
-                                                    value = str(),
-                                                    key=order_num_key)
-                            order_num = "#"+str(order)
-
+                            default_order = pending_update[0] if pending_update else ""
+                            order = st.text_input(
+                                "Inserire il numero di ordine relativo al pagamento (senza #)",
+                                value=default_order.replace("#", "") if default_order else "",
+                                key=f"widget_order_num_{idx}"
+                            )
+                            order_num = "#" + str(order)
                         new_values[0] = order_num
-                                            
+
+
                         #Paid at
                         if pd.isna(pagamento["Data"]):
-                            paid_at = st.text_input("Inserire la data dell'ordine relativo al pagamento nel formato yyyy-mm-dd",
-                                                    value = str(),
-                                                    key=paid_at_key)
+                            default_date = pending_update[1] if pending_update else ""
+                            paid_at = st.text_input(
+                                "Inserire la data dell'ordine relativo al pagamento nel formato yyyy-mm-dd",
+                                value=default_date,
+                                key=f"widget_paid_at_{idx}"
+                            )
                         else:
                             paid_at = pagamento["Data"]
-                        
                         new_values[1] = paid_at
+
 
                         #Total
                         new_values[2] = pagamento["Importo Pagato"]
 
-                        #Sku and Quantity:
-                        total_items_quantity =  st.number_input("Quanti items diversi vanno inclusi?",
-                                                            value=1,      # default value
-                                                            step=1,       # increment by whole numbers
-                                                            key=total_quantity_key)
+
+                        #Items:
+                        default_quantity = len(pending_update[3]) if pending_update and pending_update[3] else 1
+                        total_items_quantity = st.number_input(
+                            "Quanti items diversi vanno inclusi?",
+                            value=default_quantity,
+                            step=1,
+                            key=f"widget_total_quantities{idx}"
+                        )
                         
-                        if(total_items_quantity <= 0):
+                        if total_items_quantity <= 0:
                             st.error("Il numero di items deve essere maggiore di 0")
                             all_required_fields_filled = False
 
@@ -1606,85 +1636,83 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                         all_lineitems_names = []
 
                         for i in range(max(total_items_quantity, 1)):
-                            name_key = f"widget_name_{idx}_{i}" 
-                            sku_key = f"widget_sku_{idx}_{i}" 
-                            quantity_key = f"widget_quantity_{idx}_{i}"
-                            include_key = f"widget_include_{idx}_{i}"  # Unique key for the include checkbox
+                            default_sku = pending_update[3][i] if pending_update and pending_update[3] and i < len(pending_update[3]) else "015790000000"
+                            default_quantity = pending_update[4][i] if pending_update and pending_update[4] and i < len(pending_update[4]) else 1
+                            default_name = pending_update[5][i] if pending_update and pending_update[5] and i < len(pending_update[5]) else ""
 
                             sku = st.text_input(
                                 f"Inserire lo sku dell'item {i+1}",
-                                value=str("015790000000"),
-                                key=sku_key
+                                value=default_sku,
+                                key=f"widget_sku_{idx}_{i}"
                             )
                             
                             quantity_items = st.number_input(
                                 f"Inserire la quantità dell'item {i+1}",
-                                value=1,      # default value
-                                step=1,       # increment by whole numbers
-                                key=quantity_key
+                                value=default_quantity,
+                                step=1,
+                                key=f"widget_quantity_{idx}_{i}"
                             )
                             
                             name_items = st.text_input(
                                 f"Inserire il name dell'item {i+1}",
-                                value=str(),
-                                key=name_key
+                                value=default_name,
+                                key=f"widget_name_{idx}_{i}"
                             )
                             
                             all_skus.append(sku)
                             all_quantities.append(quantity_items)
                             all_lineitems_names.append(name_items)
 
-                            # Checks and blocks the user from continuing 
-                            # if the sku doesn't respect 12 digits rule
-                            # if sku:  # Only check if a value was entered
-                            #     if len(sku) == 12 and sku.isdigit():    
-                            #         all_skus.append(sku)
-                            #         all_quantities.append(quantity_items)
-                            #         all_lineitems_names.append(name_items)
-                            #         all_required_fields_filled = True
-
-                            #         # if not include_in_analysis:
-                            #         #     if sku not in st.session_state.sku_da_escludere:
-                            #         #         st.session_state.sku_da_escludere.append(sku)
-                            #     else:
-                            #         st.error("Lo SKU inserito deve contenere 12 cifre. Ricontrollare")
-                            #         all_required_fields_filled = False
-
                         new_values[3] = all_skus
                         new_values[4] = all_quantities
                         new_values[5] = all_lineitems_names
 
-                        #Shipping Country
-                        selected_country = st.text_input("Inserire il codice dello Shipping Country", 
-                                                        value = "IT", 
-                                                        key=country_key)
+                        default_country = pending_update[6] if pending_update else "IT"
+                        selected_country = st.text_input(
+                            "Inserire il codice dello Shipping Country", 
+                            value=default_country,
+                            key=f"widget_country_{idx}"
+                        )
+                        new_values[6] = selected_country.upper() if selected_country else None
 
-                        if selected_country:
-                            try:
-                                # Validation: ensure it's exactly 2 uppercase letters
-                                if len(selected_country) == 2 and selected_country.isalpha():
-                                    new_values[6] = selected_country.upper()
-                            except ValueError:
-                                st.error("Il codice del paese deve essere esattamente di 2 lettere.")
-                                all_required_fields_filled = False
+                        # if selected_country:
+                        #     try:
+                        #         # Validation: ensure it's exactly 2 uppercase letters
+                        #         if len(selected_country) == 2 and selected_country.isalpha():
+                        #             new_values[6] = selected_country.upper()
+                        #     except ValueError:
+                        #         st.error("Il codice del paese deve essere esattamente di 2 lettere.")
+                        #         all_required_fields_filled = False
+
 
                         #Payment Method
                         new_values[7] = metodo  # Save the relative Payment Method
                         
+
                         #Location
                         locations = ["LIL House", "Firgun House", "LIL House London"]
-                        selected_location = st.selectbox("Seleziona la Location dell'ordine relativo al pagamento:", locations, key=location_key)
+                        default_location_idx = locations.index(pending_update[8]) if pending_update and pending_update[8] in locations else 0
+                        selected_location = st.selectbox(
+                            "Seleziona la Location dell'ordine relativo al pagamento:",
+                            options=locations,
+                            index=default_location_idx,
+                            key=f"widget_location_{idx}"
+                        )
+                        new_values[8] = selected_location
 
-                        new_values[8] = selected_location  # Save selected location
-
-                        #Brand
-                        brand = ["LIL", "AGEE"]
-                        selected_brand = st.selectbox("Seleziona il Brand dell'ordine relativo al pagamento:", brand, key=brand_key)
-
-                        new_values[9] = selected_brand  # Save selected Brand
+                        # Brand
+                        brands = ["LIL", "AGEE"]
+                        default_brand_idx = brands.index(pending_update[9]) if pending_update and pending_update[9] in brands else 0
+                        selected_brand = st.selectbox(
+                            "Seleziona il Brand dell'ordine relativo al pagamento:",
+                            options=brands,
+                            index=default_brand_idx,
+                            key=f"widget_brand_{idx}"
+                        )
+                        new_values[9] = selected_brand
 
                     else:
-                        new_values = [None, None, None, None, None, None, None, None, None, None]  # Initialize list to hold order number, date, quantities, sku, country and location
+                        new_values = [None] * 10
 
                             
                         # Add a submit button
@@ -1723,18 +1751,14 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                                                     }
                                 else:
                                     # Not matched to existing order, updates the payment
-                                    new_result, new_pagamenti = update_df(st.session_state.processed_data, new_values, idx, st.session_state.pagamenti)
-                                    st.session_state.processed_data = new_result
-                                    st.session_state.pagamenti = new_pagamenti
-                                    st.session_state.saved_updates.add(idx)
+                                    payment_manager.add_pending_update(idx, new_values)
+                                    payment_manager.mark_payment_completed(idx)
                                     st.session_state[f'success_{idx}'] = True
                         
                         else:
                                 # All values None - drops the payment
-                                new_result, new_pagamenti = update_df(st.session_state.processed_data, new_values, idx, st.session_state.pagamenti)
-                                st.session_state.processed_data = new_result
-                                st.session_state.pagamenti = new_pagamenti
-                                st.session_state.saved_updates.add(idx)
+                                payment_manager.add_pending_update(idx, new_values)
+                                payment_manager.mark_payment_completed(idx)
                                 st.session_state[f'success_{idx}'] = True
                         
                         ## Salva lo stato corrente in un file di backup
@@ -1752,13 +1776,10 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                         confirm_submit = st.form_submit_button("Aggiungere")
                         
                         if confirm_submit:
-                            new_result, new_pagamenti = update_df(st.session_state.processed_data, valori, idx, st.session_state.pagamenti)
-                            st.session_state.processed_data = new_result
-                            st.session_state.pagamenti = new_pagamenti
-                            st.session_state.saved_updates.add(idx)
-                            st.session_state[f'is_order_name_used{idx}'] = False
+                            payment_manager.add_pending_update(idx, new_values)
+                            payment_manager.mark_payment_completed(idx)
                             st.session_state[f'success_{idx}'] = True
-                            ## Salva lo stato corrente in un file di backup
+                            st.rerun()
                             auto_save_on_change()
 
                 # Show success message if it's in the session state
@@ -1771,17 +1792,33 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                         
 ####EXCEL            
-        proceed_excel = count_pagamenti_controllati >= len(pagamenti_da_ricontrollare_df) 
+        proceed_excel = payment_manager.should_proceed_to_excel()
 
         if proceed_excel:
-            
+                
             excel_filename = st.text_input("Inserire il nome da dare al file Excel (senza .xlsx):", value="output_file")
         
             # Add disabled state to the Generate Excel button
             if st.button("Genera Excel", key="widget_generate_excel_button"): #, disabled=st.session_state.excel_generated):
+
                 if excel_filename:
                     full_filename = f"{excel_filename}.xlsx"
-                    with st.spinner('Creazione del file Excel in corso...'):
+
+                    with st.spinner('Applicazione modifiche e generazione Excel in corso...'):
+                        # Prima applica tutte le modifiche pendenti
+                        new_main_df, new_payments_df = payment_manager.apply_all_updates(
+                            st.session_state.processed_data,
+                            st.session_state.pagamenti
+                        )
+                        
+                        # Aggiorna i DataFrame principali
+                        st.session_state.processed_data = new_main_df
+                        st.session_state.pagamenti = new_payments_df
+                        
+                        # Resetta lo stato del manager
+                        payment_manager.reset_state()
+                        
+                        # Ora genera l'Excel con i dati aggiornati
                         excel_file = generate_excel(st.session_state.processed_data, st.session_state.pagamenti, full_filename)
                     
                     st.success("File Excel generato con successo!")

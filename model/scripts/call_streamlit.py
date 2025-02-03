@@ -106,7 +106,7 @@ def run(order_files, payment_files, month, year):
         print("Runner created")
         
         result, pagamenti, pagamenti_columns = runner.run_all_matchers(month, year)
-        # st.session_state.pagamenti_columns = pagamenti_columns
+        st.session_state.pagamenti_columns = pagamenti_columns          # Do not remove or comment
 
         return result, pagamenti
     
