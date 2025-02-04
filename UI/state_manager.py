@@ -21,6 +21,15 @@ EXCLUDED_PREFIXES = {
     'widget_'
 }
 
+
+def auto_save_on_change():
+    """
+    Salva automaticamente lo stato quando viene chiamata
+    """
+    state_manager = SessionStateManager()
+    state_manager.save_state()
+
+
 class SessionStateManager:
     def __init__(self, autosave_path="last_state.pkl", max_age_hours=24):
         self.autosave_path = Path(autosave_path)
