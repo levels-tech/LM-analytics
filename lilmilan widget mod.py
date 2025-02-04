@@ -299,7 +299,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
         # ///////////// CHUNK 2 //////////////
         # ITERA SU TUTTI GLI ORDINI DA CONTROLLARE ESTRAPOLA 
         for name in unique_O_ID_Lil_da_ricontrollare:
-            st.write(orders_count)
             name_df = lil_df[lil_df['Name'] == name]
             st.session_state.numeri_pagamenti = []          # Serve a salvare i pagamenti associati all'ordine | Resettiamo ad ogni nuovo ordine
             
@@ -905,7 +904,6 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
 
                     # Ottieni eventuali modifiche in sospeso per questo pagamento
                     pending_update = payment_manager.get_pending_update(idx)
-                    print("payment:", importo_pagato ,"pending_update", pending_update)
                     
                     # Choice for including payment con default basato su pending_update
                     has_values = pending_update and any(x is not None for x in pending_update)
