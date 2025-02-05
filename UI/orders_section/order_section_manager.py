@@ -335,6 +335,10 @@ class UpdateHandler:
 
 
     def _verify_original_order_inconsistencies(self, nan):
+        if not self.new_values:
+            st.error("Modificare almeno una colonna")
+            return False
+        
         if "Payment Method" not in self.columns_to_edit:
             if self.double_payment_method:
                 st.error("È necessario compilare il campo Payment Method e scegliere un unico metodo di pagamento")
@@ -362,33 +366,29 @@ class UpdateHandler:
         name_df = self.name_df              # never modified
         new_values = self.new_values        # never modified
 
-        if not new_values:
-            st.error("Modificare almeno una colonna")
+        if "Total" not in self.columns_to_edit:
+            # No total change, proceed with update
+            self._update_order()
+            return
         
+        new_total = float(new_values[list(new_values.keys())[0]]['values']['Total'])
+        if len(selected_rows) == 0:                                         # Caso di Qromo in Metodo
+            importo_pagato = float(name_df["Importo Pagato"].values[0])
+
+        if check.startswith("VALUTA"):                                      # Caso di valuta diversa (solo Paypal)
+            importo_pagato = new_total
+            numero_pagamento = name_df["Numero Pagamento"].values[0]
+            st.session_state.pagamenti.loc[st.session_state.pagamenti['Numero Pagamento'] == numero_pagamento, 'Lordo'] = importo_pagato
+            st.session_state.pagamenti.loc[st.session_state.pagamenti['Numero Pagamento'] == numero_pagamento, 'CHECK'] = "VERO"
+
+        if new_total != importo_pagato:
+            st.session_state[f'needs_confirmation_{name}'] = True
+            st.session_state[f'new_values_{name}'] = new_values                                  
+
         else:
-            if "Total" not in self.columns_to_edit:
-                # No total change, proceed with update
-                self._update_order()
-                return
-            
-            new_total = float(new_values[list(new_values.keys())[0]]['values']['Total'])
-            if len(selected_rows) == 0:                                         # Caso di Qromo in Metodo
-                importo_pagato = float(name_df["Importo Pagato"].values[0])
-
-            if check.startswith("VALUTA"):                                      # Caso di valuta diversa (solo Paypal)
-                importo_pagato = new_total
-                numero_pagamento = name_df["Numero Pagamento"].values[0]
-                st.session_state.pagamenti.loc[st.session_state.pagamenti['Numero Pagamento'] == numero_pagamento, 'Lordo'] = importo_pagato
-                st.session_state.pagamenti.loc[st.session_state.pagamenti['Numero Pagamento'] == numero_pagamento, 'CHECK'] = "VERO"
-
-            if new_total != importo_pagato:
-                st.session_state[f'needs_confirmation_{name}'] = True
-                st.session_state[f'new_values_{name}'] = new_values                                  
-
-            else:
-                st.session_state[f'needs_confirmation_{name}'] = False
-                self._update_order()
-                self.handle_multiple_payment_methods(new_total,importo_pagato, pagamenti)
+            st.session_state[f'needs_confirmation_{name}'] = False
+            self._update_order()
+            self.handle_multiple_payment_methods(new_total,importo_pagato, pagamenti)
 
 
     ## Non funziona come pensava
