@@ -38,6 +38,45 @@ def get_order_total(df, nome_ordine):
     else:
         return False, 0
 
+def render_navigation(lil_df, agee_df):
+    """Renders the navigation buttons for different sections"""
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("Go to LIL Orders",
+                    disabled=st.session_state.current_section == 'lil-orders', 
+                    use_container_width=True):
+            st.session_state.current_section = 'lil-orders'
+            st.rerun()
+            
+    with col2:
+        if st.button("Go to AGEE Orders", 
+                    disabled=st.session_state.current_section == 'agee-orders',
+                    use_container_width=True):
+            st.session_state.current_section = 'agee-orders'
+            st.rerun()
+            
+    with col3:
+        # Only enable payments button if all orders are processed
+        orders_completed = st.session_state.orders_count >= len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
+        
+        if st.button("Go to Payments Section", 
+                    disabled= (not orders_completed) or (st.session_state.current_section == 'payments'),
+                    use_container_width=True):
+            st.session_state.current_section = 'payments'
+            st.rerun()
+    
+    st.markdown("---")
+
+def render_section_header():
+    """Renders the header for the current section"""
+    if st.session_state.current_section == 'lil-orders':
+        st.subheader("LIL Milan Orders Section")
+    elif st.session_state.current_section == 'agee-orders':
+        st.subheader("AGEE Orders Section")
+    elif st.session_state.current_section == 'payments':
+        st.subheader("Payments Section")
+
 st.set_page_config(layout="wide")
 
 COLUMNS_TO_SHOW = ['Name', "Total", 'Shipping', 'Discount Code', 'Discount Amount', 'Paid at', 'Payment Method', 'Email', 'Financial Status', 'Currency', 
@@ -67,10 +106,16 @@ if 'pagamenti_da_aggiungere_lil' not in st.session_state:
     st.session_state.pagamenti_da_aggiungere_lil = {}
 if 'pagamenti_da_aggiungere_agee' not in st.session_state:
     st.session_state.pagamenti_da_aggiungere_agee = {}
+if 'pagamenti_unmatched' not in st.session_state:
+    st.session_state.pagamenti_unmatched = {}
 if 'restored_from_state' not in st.session_state:
     st.session_state.restored_from_state = False
 if 'files_processed' not in st.session_state:
     st.session_state.files_processed = False
+if 'orders_count' not in st.session_state:
+    st.session_state.orders_count = 0
+if 'current_section' not in st.session_state:
+    st.session_state.current_section = 'lil-orders'
 
 
 
@@ -257,525 +302,524 @@ with upload_container:
 ############### FINE PAGINA DI INPUT ###############
 
 if st.session_state.processed_data is not None and st.session_state.pagamenti is not None:
-    ###TODO: -- Funziona??-- ###
-    # upload_container.empty()  
 
     st.session_state.processed_data['original_index'] = st.session_state.processed_data.index.astype(int)
     st.session_state.pagamenti['original_index'] = st.session_state.pagamenti.index.astype(int)
-
-    
 
 
     # Initialize brand df and other variables
     lil_df, last_index_lil, names_count_lil = initialize_brand(st.session_state.processed_data, "Ordini LIL", COLUMNS_TO_SHOW)
     agee_df, last_index_agee, unique_O_count_agee = initialize_brand(st.session_state.processed_data, "Ordini AGEE", COLUMNS_TO_SHOW)
 
-    orders_count = 0
+
+    # Render navigation
+    render_navigation(lil_df, agee_df)
+    render_section_header()
     
     ############################################# LIL MILAN ORDERS SECTION #############################################
 
     # ///////////// CHUNK 1 //////////////
     # INIZIALIZZA IL DF E STAMPA GLI ORDINI DA CONTROLLARE
-    #      
-    st.session_state.unique_O_ID_Lil_da_ricontrollare = None
-
-    if len(lil_df) > 0:
-        st.write("")
-        st.subheader("Ordini da controllare LIL Milan")
-
-        # Evita di fare il sorting e il filtering ad ogni ricarica
-        # Se non c'è in variabile di stato ordina e calcola gli order id da coqntrollare altrimenti li carica da variabile di stato
-        # TODO: si può ottimizzare il sorting e magari salvare in state variable
-        lil_df_sorted = lil_df.sort_values(by=["CHECK", "Name"])
-        unique_O_ID_Lil_da_ricontrollare = lil_df_sorted[lil_df_sorted['Name'].notna()]['Name'].unique()
-        st.session_state.unique_O_ID_Lil_da_ricontrollare = unique_O_ID_Lil_da_ricontrollare
-        
-        
-        st.write(f"{len(unique_O_ID_Lil_da_ricontrollare)} ordini su {names_count_lil}")
-        pagamenti =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] != "VERO")].copy() 
-
-        # ///////////// FINE CHUNK 1 //////////////
-        # ///////////// CHUNK 2 //////////////
-        # ITERA SU TUTTI GLI ORDINI DA CONTROLLARE ESTRAPOLA 
-        for name in unique_O_ID_Lil_da_ricontrollare:
-            name_df = lil_df[lil_df['Name'] == name]
-            st.session_state.numeri_pagamenti = []          # Serve a salvare i pagamenti associati all'ordine | Resettiamo ad ogni nuovo ordine
-            
-            with st.container():
-                order_display = OrderDisplay()
-
-                # Mostra messaggi di warning in base alla tipologia di ordine (FALSO, NON TROVATO, LONDON, VALUTA)
-                check, metodo = order_display.show_order_header(name, name_df)
-
-                # Stampa il df dell'ordine corrente
-                order_display.show_order_data(name_df, COLUMNS_TO_SHOW)
-
-                # ///////////// FINE CHUNK 4 //////////////
-                # ///////////// CHUNK 5 //////////////
-                # CONTROLLA CHE L'ORDINE ABBIA TUTTI I CAMPI NECESSARI CON VALORI E MOSTRA I WARNING IN CASO DI MANCANZA
-                # INOLTRE CONTROLLA SE CI SONO METODI DI PAGAMENTO MULTIPLI E MOSTRA I WARNING IN CASO DI DOPPIO/TRIPLO PAGAMENTO
-
-                nan, double_payment_method = validate_current_order(lil_df, name, EXCLUDE_STRINGS)
-
-                st.session_state['cambiare_metodo'] = False
-                # ///////////// FINE CHUNK 5 //////////////
-                # ///////////// CHUNK 6 //////////////
-                # GESTISCE IL CASO DI ORDINI PAGATI CON QROMO (O SATISPAY OFFLINE) (SINGOLI O MULTIPLI CHE SIANO)
-
-                method_handler = MethodHandler(pagamenti, name_df, name)
-                selected_rows, importo_pagato = method_handler.handle_method(metodo)
-
-                # ///////////// FINE CHUNK 7 //////////////
-                # ///////////// CHUNK 8 //////////////
-                # CREA GLI ELEMENTI PER LA MODIFICA DEI CAMPI E I RISPETTIVI SPAZI DI INSERIMENTO A SECONDA DELLA TIPOLOGIA
-                modify_order_selector = ModifyOrderSelector(name, name_df, PAYMENTS, importo_pagato, 
-                                                            selected_rows, LOCATIONS_LIL, COLUMNS_TO_SHOW)
-
-                columns_to_edit = modify_order_selector.display_multiselect()
-
-                submit, new_values = modify_order_selector.editing_form(columns_to_edit)
-
-                section_placeholder = st.empty()
-
-                # ///////////// FINE CHUNK 8 //////////////
-                # ///////////// CHUNK 9 //////////////
-                # GESTISCE LE MODIFICHE FATTE E FA I CONTROLLI NECESSARI CHE CI SIA TUTTO PER PROSEGUIRE E AGGIORNARE IL DF POI AGGIORNA IL DF
-
-                ## Controlla se ci sono pagamenti doppi e non permette di procedere se non sono stati selezionati pagamenti
-                ## Se st.session_state['cambiare_metodo'] è True, controlla che il metodo di pagamento sia stato cambiato
-                ## In sostanza chiede di aggiornare Payment Method nelle due condizioni sopra segnate
-                ## Verifica che tutti i campi obbligatori che contenevano valori nulli siano stati compilati con dei nuovi valori
-                ## Gestisce tutte le verifiche derivanti dalle modifiche fatte e fa gli aggiornamenti di DF e di stato
-                ## In caso di discrepanza tra totale atteso e inserito chiede conferma
-                ## In caso di rimanenze di totale pagate con cash propone l'aggiunta di un riga con il rimanente in cash e chiede conferma
-                ## In caso di rimanenze di totale pagate con altro metodo di pagamento mostra checkbox coi pagamenti e ne fa selezionare altri, può essere ignorato
-                ## Aggiorna il DF e le variabili di stato
-                with section_placeholder.container():
-                    
-                    # Store the submission state
-
-                    update_handler = UpdateHandler(name, name_df, new_values, orders_count, columns_to_edit, double_payment_method)
-                    if submit:
-                        update_handler.update_submitted(nan, selected_rows, check, importo_pagato, pagamenti)                                
-
-                    if f'needs_confirmation_{name}' in st.session_state and st.session_state[f'needs_confirmation_{name}']:
-                        update_handler.needs_confirmation()
-                    
-                    if f'success_{name}' in st.session_state and st.session_state[f'success_{name}']:
-                        update_handler.show_success()
-                    
-                    if f'needs_aggiungi_check_{name}' in st.session_state and st.session_state[f'needs_aggiungi_check_{name}']:
-                        update_handler.needs_double_check()
-                    
-                    if f'success_aggiunto_{name}' in st.session_state and st.session_state[f'success_aggiunto_{name}']:
-                        update_handler.double_check_success()
-
-                    orders_count = update_handler.get_orders_count()
-                # ///////////// FINE CHUNK 9 //////////////
-
-
-        # ///////////// CHUNK 10 //////////////                    
-    else:
-        section_placeholder = None
-        st.subheader("Nessun ordine di LIL Milan deve essere controllato")
-    # ///////////// FINE CHUNK 10 //////////////
-    ## FINE LIL MILAN ORDERS
-
-############################################# AGEE ORDERS SECTION #############################################
-    if len(agee_df) > 0:
-        st.write("")
-        st.subheader("Ordini da controllare AGEE")
-
-        agee_df_sorted = agee_df.sort_values(by=["CHECK", "Name"])
-            
-        num_O_Agee_da_ricontrollare = agee_df_sorted[agee_df_sorted['Name'].notna()]['Name'].unique()    
-        st.write(f"{len(num_O_Agee_da_ricontrollare)} ordini su {unique_O_count_agee}")
-            
-        for name in num_O_Agee_da_ricontrollare:
-            name_df = agee_df[agee_df['Name'] == name]
-            st.session_state.numeri_pagamenti = []
-
-            with st.container():
-                order_display_agee = OrderDisplay()
-
-                # Mostra messaggi di warning in base alla tipologia di ordine (FALSO, NON TROVATO, LONDON, VALUTA)
-                check, metodo = order_display_agee.show_order_header(name, name_df)
-
-                # Stampa il df dell'ordine corrente
-                order_display_agee.show_order_data(name_df, COLUMNS_TO_SHOW)
-                
-                nan, double_payment_method = validate_current_order(agee_df, name, EXCLUDE_STRINGS)
-
-                st.session_state['cambiare_metodo'] = False
-
-                
-                method_handler_agee = MethodHandler(pagamenti, name_df, name)
-                selected_rows, importo_pagato = method_handler_agee.handle_method(metodo)
-
-                modify_order_selector_agee = ModifyOrderSelector(name, name_df, PAYMENTS, importo_pagato, 
-                                                            selected_rows, LOCATIONS_AGEE, COLUMNS_TO_SHOW)
-
-                columns_to_edit = modify_order_selector_agee.display_multiselect()
-
-                submit, new_values = modify_order_selector_agee.editing_form(columns_to_edit)
-                
-                update_handler_agee = UpdateHandler(name, name_df, new_values, orders_count, columns_to_edit, double_payment_method)
-                if submit:
-                    update_handler_agee.update_submitted(nan, selected_rows, check, importo_pagato, pagamenti)                                
-
-                if f'needs_confirmation_{name}' in st.session_state and st.session_state[f'needs_confirmation_{name}']:
-                    update_handler_agee.needs_confirmation()
-                
-                if f'success_{name}' in st.session_state and st.session_state[f'success_{name}']:
-                    update_handler_agee.show_success()
-                
-                if f'needs_aggiungi_check_{name}' in st.session_state and st.session_state[f'needs_aggiungi_check_{name}']:
-                    update_handler_agee.needs_double_check()
-                
-                if f'success_aggiunto_{name}' in st.session_state and st.session_state[f'success_aggiunto_{name}']:
-                    update_handler_agee.double_check_success()
-
-                orders_count = update_handler_agee.get_orders_count()                
-                            
-    else:
-        st.subheader("Nessun ordine di AGEE deve essere controllato")
-
-############################################# PAYMENT SECTION #############################################
-
-    proceed_pagamenti = orders_count >= len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
-
-    if proceed_pagamenti: 
-        # if section_placeholder is not None:
-        #     section_placeholder.empty()  # Clears all contents of the placeholder
-
-         # Inizializza il payment manager
-        payment_manager = PaymentManager()
-
-        colonne_essenziali_pagamenti =  ['Name', 'Paid at', 'Lineitem quantity', 'Lineitem sku', "Shipping Country", 'Location', "Brand"]  
-        
-        ## Se ho già fatto l'operazione di aggiornare i pagamenti, non la rifaccio
-        ## Aggiorno il df di pagamenti così da rimuovere dal controllo quelli già associati in fase di Ordini
-        ## Così facendo i pagamenti la lista di pagamenti da ricontrollare e quindi i pagamenti mostrati saranno sempre gli stessi.
-        if 'aggiorna_pagamenti_done' not in st.session_state:
-            st.session_state.pagamenti = aggiorna_pagamenti(st.session_state.pagamenti, st.session_state.pagamenti_da_aggiungere_lil, st.session_state.pagamenti_da_aggiungere_agee)
-            st.session_state.aggiorna_pagamenti_done = True
-
-        # Inizializza i pagamenti da controllare
-        payment_manager.initialize_payments_to_check(st.session_state.pagamenti)
-        
-        # Ottieni tutti i pagamenti da controllare con il loro stato
-        all_payments = payment_manager.get_payments_to_display()
-        num_pagamenti_totale = len(st.session_state.pagamenti)
-        count_pagamenti_controllati = payment_manager.get_processed_count()
-
-        #PAGAMENTI
-        if len(all_payments) > 0: 
-            
+    
+    if st.session_state.current_section == 'lil-orders':
+        if len(lil_df) > 0:
             st.write("")
-            st.subheader("Pagamenti da controllare")
-            
-            num_pagamenti_da_ricontrollare = len(all_payments)
-            st.write(f"{num_pagamenti_da_ricontrollare} pagamenti su {num_pagamenti_totale}")
-            
-            # Mostra barra di progresso
-            total_to_check = payment_manager.get_total_payments()
-            current_progress = payment_manager.get_processed_count() / total_to_check if total_to_check > 0 else 0
-            st.progress(current_progress)
+            st.subheader("Ordini da controllare LIL Milan")
 
-            # Ottiene i pagamenti paginati per la pagina corrente
-            paginated_payments = handle_paginated_payments(
-                all_payments,
-                num_pagamenti_totale
-            )
+            # Evita di fare il sorting e il filtering ad ogni ricarica
+            # Se non c'è in variabile di stato ordina e calcola gli order id da coqntrollare altrimenti li carica da variabile di stato
+            # TODO: si può ottimizzare il sorting e magari salvare in state variable
+            lil_df_sorted = lil_df.sort_values(by=["CHECK", "Name"])
+            unique_O_ID_Lil_da_ricontrollare = lil_df_sorted[lil_df_sorted['Name'].notna()]['Name'].unique()
+            
+            
+            st.write(f"{len(unique_O_ID_Lil_da_ricontrollare)} ordini su {names_count_lil}")
+            st.session_state.pagamenti_unmatched =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] != "VERO")].copy() 
 
-            # Itera solo sui pagamenti della pagina corrente
-            for _, pagamento in paginated_payments.iterrows():
-                all_required_fields_filled = True                       ## Flag per verificare che tutti i parametri necessari sono inseriti
-                idx = pagamento["original_index"]
-                metodo = pagamento['Metodo']
-                importo_pagato = pagamento['Importo Pagato']                    
+            # ///////////// FINE CHUNK 1 //////////////
+            # ///////////// CHUNK 2 //////////////
+            # ITERA SU TUTTI GLI ORDINI DA CONTROLLARE ESTRAPOLA 
+            for name in unique_O_ID_Lil_da_ricontrollare:
+                name_df = lil_df[lil_df['Name'] == name]
+                st.session_state.numeri_pagamenti = []          # Serve a salvare i pagamenti associati all'ordine | Resettiamo ad ogni nuovo ordine
+                
+                with st.container():
+                    order_display = OrderDisplay()
+
+                    # Mostra messaggi di warning in base alla tipologia di ordine (FALSO, NON TROVATO, LONDON, VALUTA)
+                    check, metodo = order_display.show_order_header(name, name_df)
+
+                    # Stampa il df dell'ordine corrente
+                    order_display.show_order_data(name_df, COLUMNS_TO_SHOW)
+
+                    # ///////////// FINE CHUNK 4 //////////////
+                    # ///////////// CHUNK 5 //////////////
+                    # CONTROLLA CHE L'ORDINE ABBIA TUTTI I CAMPI NECESSARI CON VALORI E MOSTRA I WARNING IN CASO DI MANCANZA
+                    # INOLTRE CONTROLLA SE CI SONO METODI DI PAGAMENTO MULTIPLI E MOSTRA I WARNING IN CASO DI DOPPIO/TRIPLO PAGAMENTO
+
+                    nan, double_payment_method = validate_current_order(lil_df, name, EXCLUDE_STRINGS)
+
+                    st.session_state['cambiare_metodo'] = False
+                    # ///////////// FINE CHUNK 5 //////////////
+                    # ///////////// CHUNK 6 //////////////
+                    # GESTISCE IL CASO DI ORDINI PAGATI CON QROMO (O SATISPAY OFFLINE) (SINGOLI O MULTIPLI CHE SIANO)
+
+                    method_handler = MethodHandler(st.session_state.pagamenti_unmatched, name_df, name)
+                    selected_rows, importo_pagato = method_handler.handle_method(metodo)
+
+                    # ///////////// FINE CHUNK 7 //////////////
+                    # ///////////// CHUNK 8 //////////////
+                    # CREA GLI ELEMENTI PER LA MODIFICA DEI CAMPI E I RISPETTIVI SPAZI DI INSERIMENTO A SECONDA DELLA TIPOLOGIA
+                    modify_order_selector = ModifyOrderSelector(name, name_df, PAYMENTS, importo_pagato, 
+                                                                selected_rows, LOCATIONS_LIL, COLUMNS_TO_SHOW)
+
+                    columns_to_edit = modify_order_selector.display_multiselect()
+
+                    submit, new_values = modify_order_selector.editing_form(columns_to_edit)
+
+                    section_placeholder = st.empty()
+
+                    # ///////////// FINE CHUNK 8 //////////////
+                    # ///////////// CHUNK 9 //////////////
+                    # GESTISCE LE MODIFICHE FATTE E FA I CONTROLLI NECESSARI CHE CI SIA TUTTO PER PROSEGUIRE E AGGIORNARE IL DF POI AGGIORNA IL DF
+
+                    ## Controlla se ci sono pagamenti doppi e non permette di procedere se non sono stati selezionati pagamenti
+                    ## Se st.session_state['cambiare_metodo'] è True, controlla che il metodo di pagamento sia stato cambiato
+                    ## In sostanza chiede di aggiornare Payment Method nelle due condizioni sopra segnate
+                    ## Verifica che tutti i campi obbligatori che contenevano valori nulli siano stati compilati con dei nuovi valori
+                    ## Gestisce tutte le verifiche derivanti dalle modifiche fatte e fa gli aggiornamenti di DF e di stato
+                    ## In caso di discrepanza tra totale atteso e inserito chiede conferma
+                    ## In caso di rimanenze di totale pagate con cash propone l'aggiunta di un riga con il rimanente in cash e chiede conferma
+                    ## In caso di rimanenze di totale pagate con altro metodo di pagamento mostra checkbox coi pagamenti e ne fa selezionare altri, può essere ignorato
+                    ## Aggiorna il DF e le variabili di stato
+                    with section_placeholder.container():
+                        
+                        # Store the submission state
+
+                        update_handler = UpdateHandler(name, name_df, new_values, st.session_state.orders_count, columns_to_edit, double_payment_method)
+                        if submit:
+                            update_handler.update_submitted(nan, selected_rows, check, importo_pagato, st.session_state.pagamenti_unmatched)                                
+
+                        if f'needs_confirmation_{name}' in st.session_state and st.session_state[f'needs_confirmation_{name}']:
+                            update_handler.needs_confirmation()
+                        
+                        if f'success_{name}' in st.session_state and st.session_state[f'success_{name}']:
+                            update_handler.show_success()
+                        
+                        if f'needs_aggiungi_check_{name}' in st.session_state and st.session_state[f'needs_aggiungi_check_{name}']:
+                            update_handler.needs_double_check()
+                        
+                        if f'success_aggiunto_{name}' in st.session_state and st.session_state[f'success_aggiunto_{name}']:
+                            update_handler.double_check_success()
+
+                        st.session_state.orders_count = update_handler.get_orders_count()
+                    # ///////////// FINE CHUNK 9 //////////////
+
+
+            # ///////////// CHUNK 10 //////////////                    
+        else:
+            section_placeholder = None
+            st.subheader("Nessun ordine di LIL Milan deve essere controllato")
+        # ///////////// FINE CHUNK 10 //////////////
+        ## FINE LIL MILAN ORDERS
+
+    ############################################# AGEE ORDERS SECTION #############################################
+    elif st.session_state.current_section == 'agee-orders':
+        if len(agee_df) > 0:
+            st.write("")
+            st.subheader("Ordini da controllare AGEE")
+
+            agee_df_sorted = agee_df.sort_values(by=["CHECK", "Name"])
+                
+            num_O_Agee_da_ricontrollare = agee_df_sorted[agee_df_sorted['Name'].notna()]['Name'].unique()    
+            st.write(f"{len(num_O_Agee_da_ricontrollare)} ordini su {unique_O_count_agee}")
+                
+            for name in num_O_Agee_da_ricontrollare:
+                name_df = agee_df[agee_df['Name'] == name]
+                st.session_state.numeri_pagamenti = []
 
                 with st.container():
-                    st.markdown("---")
+                    order_display_agee = OrderDisplay()
 
-                    st.subheader(f"Pagamento con {metodo} di {importo_pagato}")
+                    # Mostra messaggi di warning in base alla tipologia di ordine (FALSO, NON TROVATO, LONDON, VALUTA)
+                    check, metodo = order_display_agee.show_order_header(name, name_df)
 
-                    # Display current payment info
-                    st.write("Pagamenti non collegati direttamente ad alcun ordine:")
-                    if metodo == "PayPal Express Checkout":
-                        colonne_pag = ["Metodo", "Data", "Nome", "Indirizzo email mittente", "Numero Pagamento", "Importo Pagato"]
-                    else:
-                        colonne_pag = ["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]
-
-
-                    ## Mostra il Dataframe del pagamento
-                    st.dataframe(pd.DataFrame([pagamento])[colonne_pag],
-                                use_container_width=True)
-
-                    # Ottieni eventuali modifiche in sospeso per questo pagamento
-                    pending_update = payment_manager.get_pending_update(idx)
+                    # Stampa il df dell'ordine corrente
+                    order_display_agee.show_order_data(name_df, COLUMNS_TO_SHOW)
                     
-                    # Choice for including payment con default basato su pending_update
-                    has_values = pending_update and any(x is not None for x in pending_update)
-                    default_include = 1 if has_values else 0
-                    include_choice = st.radio(
-                        "Pagamento da includere negli ordini?",
-                        options=["No", "Si"],
-                        index=default_include,
-                        key=f"widget_include_choice_{idx}"
-                    )
+                    nan, double_payment_method = validate_current_order(agee_df, name, EXCLUDE_STRINGS)
 
-                    # Handles the creation of the form for all the values
-                    # Handles No case for payment exclusion
-                    if include_choice == "Si":
-                        new_values = [None] * 10                                  
-                        st.write("Inserire le seguenti informazioni")
+                    st.session_state['cambiare_metodo'] = False
 
+                    
+                    method_handler_agee = MethodHandler(st.session_state.pagamenti_unmatched, name_df, name)
+                    selected_rows, importo_pagato = method_handler_agee.handle_method(metodo)
 
-                        #Name
-                        if metodo == "Shopify Payments":
-                            order_num = pagamento["Numero Pagamento"]
+                    modify_order_selector_agee = ModifyOrderSelector(name, name_df, PAYMENTS, importo_pagato, 
+                                                                selected_rows, LOCATIONS_AGEE, COLUMNS_TO_SHOW)
+
+                    columns_to_edit = modify_order_selector_agee.display_multiselect()
+
+                    submit, new_values = modify_order_selector_agee.editing_form(columns_to_edit)
+                    
+                    update_handler_agee = UpdateHandler(name, name_df, new_values, st.session_state.orders_count, columns_to_edit, double_payment_method)
+                    if submit:
+                        update_handler_agee.update_submitted(nan, selected_rows, check, importo_pagato, st.session_state.pagamenti_unmatched)                                
+
+                    if f'needs_confirmation_{name}' in st.session_state and st.session_state[f'needs_confirmation_{name}']:
+                        update_handler_agee.needs_confirmation()
+                    
+                    if f'success_{name}' in st.session_state and st.session_state[f'success_{name}']:
+                        update_handler_agee.show_success()
+                    
+                    if f'needs_aggiungi_check_{name}' in st.session_state and st.session_state[f'needs_aggiungi_check_{name}']:
+                        update_handler_agee.needs_double_check()
+                    
+                    if f'success_aggiunto_{name}' in st.session_state and st.session_state[f'success_aggiunto_{name}']:
+                        update_handler_agee.double_check_success()
+
+                    st.session_state.orders_count = update_handler_agee.get_orders_count()                
+                                
+        else:
+            st.subheader("Nessun ordine di AGEE deve essere controllato")
+
+    ############################################# PAYMENT SECTION #############################################
+    elif st.session_state.current_section == 'payments':
+
+        proceed_pagamenti = st.session_state.orders_count >= len(lil_df.Name.unique()) + len(agee_df.Name.unique()) 
+
+        if proceed_pagamenti: 
+            # if section_placeholder is not None:
+            #     section_placeholder.empty()  # Clears all contents of the placeholder
+
+            # Inizializza il payment manager
+            payment_manager = PaymentManager()
+
+            colonne_essenziali_pagamenti =  ['Name', 'Paid at', 'Lineitem quantity', 'Lineitem sku', "Shipping Country", 'Location', "Brand"]  
+            
+            ## Se ho già fatto l'operazione di aggiornare i pagamenti, non la rifaccio
+            ## Aggiorno il df di pagamenti così da rimuovere dal controllo quelli già associati in fase di Ordini
+            ## Così facendo i pagamenti la lista di pagamenti da ricontrollare e quindi i pagamenti mostrati saranno sempre gli stessi.
+            if 'aggiorna_pagamenti_done' not in st.session_state:
+                st.session_state.pagamenti = aggiorna_pagamenti(st.session_state.pagamenti, st.session_state.pagamenti_da_aggiungere_lil, st.session_state.pagamenti_da_aggiungere_agee)
+                st.session_state.aggiorna_pagamenti_done = True
+
+            # Inizializza i pagamenti da controllare
+            payment_manager.initialize_payments_to_check(st.session_state.pagamenti)
+            
+            # Ottieni tutti i pagamenti da controllare con il loro stato
+            all_payments = payment_manager.get_payments_to_display()
+            num_pagamenti_totale = len(st.session_state.pagamenti)
+            count_pagamenti_controllati = payment_manager.get_processed_count()
+
+            #PAGAMENTI
+            if len(all_payments) > 0: 
+                
+                st.write("")
+                st.subheader("Pagamenti da controllare")
+                
+                num_pagamenti_da_ricontrollare = len(all_payments)
+                st.write(f"{num_pagamenti_da_ricontrollare} pagamenti su {num_pagamenti_totale}")
+                
+                # Mostra barra di progresso
+                total_to_check = payment_manager.get_total_payments()
+                current_progress = payment_manager.get_processed_count() / total_to_check if total_to_check > 0 else 0
+                st.progress(current_progress)
+
+                # Ottiene i pagamenti paginati per la pagina corrente
+                paginated_payments = handle_paginated_payments(
+                    all_payments,
+                    num_pagamenti_totale
+                )
+
+                # Itera solo sui pagamenti della pagina corrente
+                for _, pagamento in paginated_payments.iterrows():
+                    all_required_fields_filled = True                       ## Flag per verificare che tutti i parametri necessari sono inseriti
+                    idx = pagamento["original_index"]
+                    metodo = pagamento['Metodo']
+                    importo_pagato = pagamento['Importo Pagato']                    
+
+                    with st.container():
+                        st.markdown("---")
+
+                        st.subheader(f"Pagamento con {metodo} di {importo_pagato}")
+
+                        # Display current payment info
+                        st.write("Pagamenti non collegati direttamente ad alcun ordine:")
+                        if metodo == "PayPal Express Checkout":
+                            colonne_pag = ["Metodo", "Data", "Nome", "Indirizzo email mittente", "Numero Pagamento", "Importo Pagato"]
                         else:
-                            default_order = pending_update[0] if pending_update else ""
-                            order = st.text_input(
-                                "Inserire il numero di ordine relativo al pagamento (senza #)",
-                                value=default_order.replace("#", "") if default_order else "",
-                                key=f"widget_order_num_{idx}"
-                            )
-                            order_num = "#" + str(order)
-                        new_values[0] = order_num
+                            colonne_pag = ["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]
 
 
-                        #Paid at
-                        if pd.isna(pagamento["Data"]):
-                            default_date = pending_update[1] if pending_update else ""
-                            paid_at = st.text_input(
-                                "Inserire la data dell'ordine relativo al pagamento nel formato yyyy-mm-dd",
-                                value=default_date,
-                                key=f"widget_paid_at_{idx}"
-                            )
-                        else:
-                            paid_at = pagamento["Data"]
-                        new_values[1] = paid_at
+                        ## Mostra il Dataframe del pagamento
+                        st.dataframe(pd.DataFrame([pagamento])[colonne_pag],
+                                    use_container_width=True)
 
-
-                        #Total
-                        new_values[2] = pagamento["Importo Pagato"]
-
-
-                        #Items:
-                        default_quantity = len(pending_update[3]) if pending_update and pending_update[3] else 1
-                        total_items_quantity = st.number_input(
-                            "Quanti items diversi vanno inclusi?",
-                            value=default_quantity,
-                            step=1,
-                            key=f"widget_total_quantities{idx}"
-                        )
+                        # Ottieni eventuali modifiche in sospeso per questo pagamento
+                        pending_update = payment_manager.get_pending_update(idx)
                         
-                        if total_items_quantity <= 0:
-                            st.error("Il numero di items deve essere maggiore di 0")
-                            all_required_fields_filled = False
+                        # Choice for including payment con default basato su pending_update
+                        has_values = pending_update and any(x is not None for x in pending_update)
+                        default_include = 1 if has_values else 0
+                        include_choice = st.radio(
+                            "Pagamento da includere negli ordini?",
+                            options=["No", "Si"],
+                            index=default_include,
+                            key=f"widget_include_choice_{idx}"
+                        )
 
-                        all_skus = []
-                        all_quantities = []
-                        all_lineitems_names = []
+                        # Handles the creation of the form for all the values
+                        # Handles No case for payment exclusion
+                        if include_choice == "Si":
+                            new_values = [None] * 10                                  
+                            st.write("Inserire le seguenti informazioni")
 
-                        for i in range(max(total_items_quantity, 1)):
-                            default_sku = pending_update[3][i] if pending_update and pending_update[3] and i < len(pending_update[3]) else "015790000000"
-                            default_quantity = pending_update[4][i] if pending_update and pending_update[4] and i < len(pending_update[4]) else 1
-                            default_name = pending_update[5][i] if pending_update and pending_update[5] and i < len(pending_update[5]) else ""
 
-                            sku = st.text_input(
-                                f"Inserire lo sku dell'item {i+1}",
-                                value=default_sku,
-                                key=f"widget_sku_{idx}_{i}"
-                            )
-                            
-                            quantity_items = st.number_input(
-                                f"Inserire la quantità dell'item {i+1}",
+                            #Name
+                            if metodo == "Shopify Payments":
+                                order_num = pagamento["Numero Pagamento"]
+                            else:
+                                default_order = pending_update[0] if pending_update else ""
+                                order = st.text_input(
+                                    "Inserire il numero di ordine relativo al pagamento (senza #)",
+                                    value=default_order.replace("#", "") if default_order else "",
+                                    key=f"widget_order_num_{idx}"
+                                )
+                                order_num = "#" + str(order)
+                            new_values[0] = order_num
+
+
+                            #Paid at
+                            if pd.isna(pagamento["Data"]):
+                                default_date = pending_update[1] if pending_update else ""
+                                paid_at = st.text_input(
+                                    "Inserire la data dell'ordine relativo al pagamento nel formato yyyy-mm-dd",
+                                    value=default_date,
+                                    key=f"widget_paid_at_{idx}"
+                                )
+                            else:
+                                paid_at = pagamento["Data"]
+                            new_values[1] = paid_at
+
+
+                            #Total
+                            new_values[2] = pagamento["Importo Pagato"]
+
+
+                            #Items:
+                            default_quantity = len(pending_update[3]) if pending_update and pending_update[3] else 1
+                            total_items_quantity = st.number_input(
+                                "Quanti items diversi vanno inclusi?",
                                 value=default_quantity,
                                 step=1,
-                                key=f"widget_quantity_{idx}_{i}"
+                                key=f"widget_total_quantities{idx}"
                             )
                             
-                            name_items = st.text_input(
-                                f"Inserire il name dell'item {i+1}",
-                                value=default_name,
-                                key=f"widget_name_{idx}_{i}"
+                            if total_items_quantity <= 0:
+                                st.error("Il numero di items deve essere maggiore di 0")
+                                all_required_fields_filled = False
+
+                            all_skus = []
+                            all_quantities = []
+                            all_lineitems_names = []
+
+                            for i in range(max(total_items_quantity, 1)):
+                                default_sku = pending_update[3][i] if pending_update and pending_update[3] and i < len(pending_update[3]) else "015790000000"
+                                default_quantity = pending_update[4][i] if pending_update and pending_update[4] and i < len(pending_update[4]) else 1
+                                default_name = pending_update[5][i] if pending_update and pending_update[5] and i < len(pending_update[5]) else ""
+
+                                sku = st.text_input(
+                                    f"Inserire lo sku dell'item {i+1}",
+                                    value=default_sku,
+                                    key=f"widget_sku_{idx}_{i}"
+                                )
+                                
+                                quantity_items = st.number_input(
+                                    f"Inserire la quantità dell'item {i+1}",
+                                    value=default_quantity,
+                                    step=1,
+                                    key=f"widget_quantity_{idx}_{i}"
+                                )
+                                
+                                name_items = st.text_input(
+                                    f"Inserire il name dell'item {i+1}",
+                                    value=default_name,
+                                    key=f"widget_name_{idx}_{i}"
+                                )
+                                
+                                all_skus.append(sku)
+                                all_quantities.append(quantity_items)
+                                all_lineitems_names.append(name_items)
+
+                            new_values[3] = all_skus
+                            new_values[4] = all_quantities
+                            new_values[5] = all_lineitems_names
+
+                            default_country = pending_update[6] if pending_update else "IT"
+                            selected_country = st.text_input(
+                                "Inserire il codice dello Shipping Country", 
+                                value=default_country,
+                                key=f"widget_country_{idx}"
                             )
+                            new_values[6] = selected_country.upper() if selected_country else None
+
+                            # if selected_country:
+                            #     try:
+                            #         # Validation: ensure it's exactly 2 uppercase letters
+                            #         if len(selected_country) == 2 and selected_country.isalpha():
+                            #             new_values[6] = selected_country.upper()
+                            #     except ValueError:
+                            #         st.error("Il codice del paese deve essere esattamente di 2 lettere.")
+                            #         all_required_fields_filled = False
+
+
+                            #Payment Method
+                            new_values[7] = metodo  # Save the relative Payment Method
                             
-                            all_skus.append(sku)
-                            all_quantities.append(quantity_items)
-                            all_lineitems_names.append(name_items)
 
-                        new_values[3] = all_skus
-                        new_values[4] = all_quantities
-                        new_values[5] = all_lineitems_names
+                            #Location
+                            locations = ["LIL House", "Firgun House", "LIL House London"]
+                            default_location_idx = locations.index(pending_update[8]) if pending_update and pending_update[8] in locations else 0
+                            selected_location = st.selectbox(
+                                "Seleziona la Location dell'ordine relativo al pagamento:",
+                                options=locations,
+                                index=default_location_idx,
+                                key=f"widget_location_{idx}"
+                            )
+                            new_values[8] = selected_location
 
-                        default_country = pending_update[6] if pending_update else "IT"
-                        selected_country = st.text_input(
-                            "Inserire il codice dello Shipping Country", 
-                            value=default_country,
-                            key=f"widget_country_{idx}"
+                            # Brand
+                            brands = ["LIL", "AGEE"]
+                            default_brand_idx = brands.index(pending_update[9]) if pending_update and pending_update[9] in brands else 0
+                            selected_brand = st.selectbox(
+                                "Seleziona il Brand dell'ordine relativo al pagamento:",
+                                options=brands,
+                                index=default_brand_idx,
+                                key=f"widget_brand_{idx}"
+                            )
+                            new_values[9] = selected_brand
+
+                        else:
+                            new_values = [None] * 10
+
+                                
+                            # Add a submit button
+                        submit = st.button(
+                            "Conferma Modifiche",
+                            key=f"confirm_changes_button_{idx}",
+                            disabled=not all_required_fields_filled
                         )
-                        new_values[6] = selected_country.upper() if selected_country else None
-
-                        # if selected_country:
-                        #     try:
-                        #         # Validation: ensure it's exactly 2 uppercase letters
-                        #         if len(selected_country) == 2 and selected_country.isalpha():
-                        #             new_values[6] = selected_country.upper()
-                        #     except ValueError:
-                        #         st.error("Il codice del paese deve essere esattamente di 2 lettere.")
-                        #         all_required_fields_filled = False
 
 
-                        #Payment Method
-                        new_values[7] = metodo  # Save the relative Payment Method
-                        
+                        # Save changes button
+                        # 2: Importo Pagato         | Non lo controlliamo perché c'è sempre - lo prendiamo direttamente dalla riga del pagamento
+                        # 7: Metodo di Pagamento    | Non lo controlliamo perché c'è sempre - lo prendiamo direttamente dalla riga del pagamento
+                        if submit:
+                            if any(x is not None for x in new_values):
+                                
+                                all_required_fields_filled, missing_fields_pagamenti = validate_payment_fields(new_values, total_items_quantity)
+                                
+                                # If any required fields are missing, raise error with specific fields
+                                if not all_required_fields_filled:
+                                    error_message = "Informazioni non valide per: " + ", ".join(missing_fields_pagamenti)
+                                    st.error(error_message)
+                                
+                                else:
+                                    ## TODO: Gestire meglio questo controllo di pagamento associato all'ordine. Magari è un ordine a cui non è associato alcun pagamento
+                                    ## Creare una lista di pagamenti associati all'ordine e controllare da li se l'ordine ha già pagamenti associati
+                                    ## TODO: AAAAA Anche dentro update_df viene fatto così.
+                                    is_order_name_used, current_total = get_order_total(st.session_state.processed_data, order_num)
 
-                        #Location
-                        locations = ["LIL House", "Firgun House", "LIL House London"]
-                        default_location_idx = locations.index(pending_update[8]) if pending_update and pending_update[8] in locations else 0
-                        selected_location = st.selectbox(
-                            "Seleziona la Location dell'ordine relativo al pagamento:",
-                            options=locations,
-                            index=default_location_idx,
-                            key=f"widget_location_{idx}"
-                        )
-                        new_values[8] = selected_location
-
-                        # Brand
-                        brands = ["LIL", "AGEE"]
-                        default_brand_idx = brands.index(pending_update[9]) if pending_update and pending_update[9] in brands else 0
-                        selected_brand = st.selectbox(
-                            "Seleziona il Brand dell'ordine relativo al pagamento:",
-                            options=brands,
-                            index=default_brand_idx,
-                            key=f"widget_brand_{idx}"
-                        )
-                        new_values[9] = selected_brand
-
-                    else:
-                        new_values = [None] * 10
-
-                            
-                        # Add a submit button
-                    submit = st.button(
-                        "Conferma Modifiche",
-                        key=f"confirm_changes_button_{idx}",
-                        disabled=not all_required_fields_filled
-                    )
-
-
-                    # Save changes button
-                    # 2: Importo Pagato         | Non lo controlliamo perché c'è sempre - lo prendiamo direttamente dalla riga del pagamento
-                    # 7: Metodo di Pagamento    | Non lo controlliamo perché c'è sempre - lo prendiamo direttamente dalla riga del pagamento
-                    if submit:
-                        if any(x is not None for x in new_values):
-                            
-                            all_required_fields_filled, missing_fields_pagamenti = validate_payment_fields(new_values, total_items_quantity)
-                            
-                            # If any required fields are missing, raise error with specific fields
-                            if not all_required_fields_filled:
-                                error_message = "Informazioni non valide per: " + ", ".join(missing_fields_pagamenti)
-                                st.error(error_message)
+                                    if is_order_name_used:
+                                        st.session_state[f'is_order_name_used{idx}'] = True
+                                        st.session_state[f'useful_data_{idx}'] = {
+                                                            'ordine': order_num,
+                                                            'importo': current_total, 
+                                                            "new_values": new_values
+                                                        }
+                                    else:
+                                        # Not matched to existing order, updates the payment
+                                        payment_manager.add_pending_update(idx, new_values)
+                                        payment_manager.mark_payment_completed(idx)
+                                        st.session_state[f'success_{idx}'] = True
                             
                             else:
-                                ## TODO: Gestire meglio questo controllo di pagamento associato all'ordine. Magari è un ordine a cui non è associato alcun pagamento
-                                ## Creare una lista di pagamenti associati all'ordine e controllare da li se l'ordine ha già pagamenti associati
-                                ## TODO: AAAAA Anche dentro update_df viene fatto così.
-                                is_order_name_used, current_total = get_order_total(st.session_state.processed_data, order_num)
-
-                                if is_order_name_used:
-                                    st.session_state[f'is_order_name_used{idx}'] = True
-                                    st.session_state[f'useful_data_{idx}'] = {
-                                                        'ordine': order_num,
-                                                        'importo': current_total, 
-                                                        "new_values": new_values
-                                                    }
-                                else:
-                                    # Not matched to existing order, updates the payment
+                                    # All values None - drops the payment
                                     payment_manager.add_pending_update(idx, new_values)
                                     payment_manager.mark_payment_completed(idx)
                                     st.session_state[f'success_{idx}'] = True
-                        
-                        else:
-                                # All values None - drops the payment
+                            
+                            ## Salva lo stato corrente in un file di backup
+                            auto_save_on_change()
+
+                    if f'is_order_name_used{idx}' in st.session_state and st.session_state[f'is_order_name_used{idx}']:
+                        ordine = st.session_state[f'useful_data_{idx}']["ordine"]
+                        importo = st.session_state[f'useful_data_{idx}']["importo"]
+                        valori =  st.session_state[f'useful_data_{idx}']["new_values"]
+                        totale_pagamento =  valori[2]
+                        st.warning(f"L'ordine {ordine} è già stato assegnato a un pagamento. Aggiungere questo pagamento al totale attuale di {importo}€ dell'ordine?")
+                        st.warning(f"Il totale finale sarebbe di {importo + totale_pagamento}€")
+
+                        with st.form(f"aggiungere_{idx}"):
+                            confirm_submit = st.form_submit_button("Aggiungere")
+                            
+                            if confirm_submit:
                                 payment_manager.add_pending_update(idx, new_values)
                                 payment_manager.mark_payment_completed(idx)
                                 st.session_state[f'success_{idx}'] = True
+                                st.rerun()
+                                auto_save_on_change()
+
+                    # Show success message if it's in the session state
+                    if f'success_{idx}' in st.session_state and st.session_state[f'success_{idx}']:
+                        st.success("Modifiche salvate con successo!")
+                        count_pagamenti_controllati += 1
                         
-                        ## Salva lo stato corrente in un file di backup
-                        auto_save_on_change()
+            else:
+                st.subheader("Nessun pagamento deve essere controllato")
 
-                if f'is_order_name_used{idx}' in st.session_state and st.session_state[f'is_order_name_used{idx}']:
-                    ordine = st.session_state[f'useful_data_{idx}']["ordine"]
-                    importo = st.session_state[f'useful_data_{idx}']["importo"]
-                    valori =  st.session_state[f'useful_data_{idx}']["new_values"]
-                    totale_pagamento =  valori[2]
-                    st.warning(f"L'ordine {ordine} è già stato assegnato a un pagamento. Aggiungere questo pagamento al totale attuale di {importo}€ dell'ordine?")
-                    st.warning(f"Il totale finale sarebbe di {importo + totale_pagamento}€")
+                            
+    ####EXCEL            
+            proceed_excel = payment_manager.should_proceed_to_excel()
 
-                    with st.form(f"aggiungere_{idx}"):
-                        confirm_submit = st.form_submit_button("Aggiungere")
-                        
-                        if confirm_submit:
-                            payment_manager.add_pending_update(idx, new_values)
-                            payment_manager.mark_payment_completed(idx)
-                            st.session_state[f'success_{idx}'] = True
-                            st.rerun()
-                            auto_save_on_change()
-
-                # Show success message if it's in the session state
-                if f'success_{idx}' in st.session_state and st.session_state[f'success_{idx}']:
-                    st.success("Modifiche salvate con successo!")
-                    count_pagamenti_controllati += 1
+            if proceed_excel:
                     
-        else:
-            st.subheader("Nessun pagamento deve essere controllato")
+                excel_filename = st.text_input("Inserire il nome da dare al file Excel (senza .xlsx):", value="output_file")
+            
+                # Add disabled state to the Generate Excel button
+                if st.button("Genera Excel", key="widget_generate_excel_button"): #, disabled=st.session_state.excel_generated):
 
+                    if excel_filename:
+                        full_filename = f"{excel_filename}.xlsx"
+
+                        with st.spinner('Applicazione modifiche e generazione Excel in corso...'):
+                            # Prima applica tutte le modifiche pendenti
+                            new_main_df, new_payments_df = payment_manager.apply_all_updates(
+                                st.session_state.processed_data,
+                                st.session_state.pagamenti
+                            )
+                            
+                            # Aggiorna i DataFrame principali
+                            st.session_state.processed_data = new_main_df
+                            st.session_state.pagamenti = new_payments_df
+                            
+                            # Resetta lo stato del manager
+                            payment_manager.reset_state()
+                            
+                            # Ora genera l'Excel con i dati aggiornati
+                            excel_file = generate_excel(st.session_state.processed_data, st.session_state.pagamenti, full_filename)
                         
-####EXCEL            
-        proceed_excel = payment_manager.should_proceed_to_excel()
+                        st.success("File Excel generato con successo!")
+                        st.session_state.excel_generated = True  # Set the flag to disable the button
 
-        if proceed_excel:
-                
-            excel_filename = st.text_input("Inserire il nome da dare al file Excel (senza .xlsx):", value="output_file")
-        
-            # Add disabled state to the Generate Excel button
-            if st.button("Genera Excel", key="widget_generate_excel_button"): #, disabled=st.session_state.excel_generated):
-
-                if excel_filename:
-                    full_filename = f"{excel_filename}.xlsx"
-
-                    with st.spinner('Applicazione modifiche e generazione Excel in corso...'):
-                        # Prima applica tutte le modifiche pendenti
-                        new_main_df, new_payments_df = payment_manager.apply_all_updates(
-                            st.session_state.processed_data,
-                            st.session_state.pagamenti
-                        )
-                        
-                        # Aggiorna i DataFrame principali
-                        st.session_state.processed_data = new_main_df
-                        st.session_state.pagamenti = new_payments_df
-                        
-                        # Resetta lo stato del manager
-                        payment_manager.reset_state()
-                        
-                        # Ora genera l'Excel con i dati aggiornati
-                        excel_file = generate_excel(st.session_state.processed_data, st.session_state.pagamenti, full_filename)
-                    
-                    st.success("File Excel generato con successo!")
-                    st.session_state.excel_generated = True  # Set the flag to disable the button
-
-                    # Provide a download link for the Excel file
-                    with open(excel_file, "rb") as f:
-                        st.download_button(
-                            label="Download Excel",
-                            data=f,
-                            file_name=full_filename,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                else:
-                    st.error("Per favore, inserire un nome valido per il file Excel.")
+                        # Provide a download link for the Excel file
+                        with open(excel_file, "rb") as f:
+                            st.download_button(
+                                label="Download Excel",
+                                data=f,
+                                file_name=full_filename,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
+                    else:
+                        st.error("Per favore, inserire un nome valido per il file Excel.")
