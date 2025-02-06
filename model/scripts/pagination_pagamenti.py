@@ -1,7 +1,7 @@
 import streamlit as st
 import math
 
-PAYMENTS_PER_PAGE = 5  # Numero di pagamenti da mostrare per pagina
+PAYMENTS_PER_PAGE = 3  # Numero di pagamenti da mostrare per pagina
 
 def init_pagination_state():
     """Inizializza lo stato della paginazione se non esiste"""
