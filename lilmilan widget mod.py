@@ -6,6 +6,7 @@ import numpy as np
 import pickle
 
 # Your original imports should work now
+from UI.orders_section.orders_pagination_handler import handle_paginated_section
 from model.scripts.call_streamlit import run, update_df, check_files, missing_fields, add_row, aggiorna_pagamenti, generate_excel, validate_payment_fields
 from model.scripts.pagination_pagamenti import handle_paginated_payments
 from model.utils.exceptions import DateMismatchError
@@ -323,8 +324,8 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     
     if st.session_state.current_section == 'lil-orders':
         if len(lil_df) > 0:
-            st.write("")
-            st.subheader("Ordini da controllare LIL Milan")
+            # st.write("")
+            # st.subheader("Ordini da controllare LIL Milan")
 
             # Evita di fare il sorting e il filtering ad ogni ricarica
             # Se non c'è in variabile di stato ordina e calcola gli order id da coqntrollare altrimenti li carica da variabile di stato
@@ -333,13 +334,24 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
             unique_O_ID_Lil_da_ricontrollare = lil_df_sorted[lil_df_sorted['Name'].notna()]['Name'].unique()
             
             
-            st.write(f"{len(unique_O_ID_Lil_da_ricontrollare)} ordini su {names_count_lil}")
+            # st.write(f"{len(unique_O_ID_Lil_da_ricontrollare)} ordini su {names_count_lil}")
             st.session_state.pagamenti_unmatched =  st.session_state.pagamenti[(st.session_state.pagamenti["CHECK"] != "VERO")].copy() 
+
+            lil_orders_dr_df = pd.DataFrame({'Name': unique_O_ID_Lil_da_ricontrollare})
+
+
+            # Handle pagination for LIL orders
+            lil_paginated_orders = handle_paginated_section(
+                lil_orders_dr_df,
+                names_count_lil,
+                'lil',
+                "Ordini da controllare LIL Milan"
+            )
 
             # ///////////// FINE CHUNK 1 //////////////
             # ///////////// CHUNK 2 //////////////
             # ITERA SU TUTTI GLI ORDINI DA CONTROLLARE ESTRAPOLA 
-            for name in unique_O_ID_Lil_da_ricontrollare:
+            for name in lil_paginated_orders['Name']:
                 name_df = lil_df[lil_df['Name'] == name]
                 st.session_state.numeri_pagamenti = []          # Serve a salvare i pagamenti associati all'ordine | Resettiamo ad ogni nuovo ordine
                 
@@ -426,15 +438,26 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
     ############################################# AGEE ORDERS SECTION #############################################
     elif st.session_state.current_section == 'agee-orders':
         if len(agee_df) > 0:
-            st.write("")
-            st.subheader("Ordini da controllare AGEE")
+            # st.write("")
+            # st.subheader("Ordini da controllare AGEE")
 
             agee_df_sorted = agee_df.sort_values(by=["CHECK", "Name"])
                 
             num_O_Agee_da_ricontrollare = agee_df_sorted[agee_df_sorted['Name'].notna()]['Name'].unique()    
-            st.write(f"{len(num_O_Agee_da_ricontrollare)} ordini su {unique_O_count_agee}")
-                
-            for name in num_O_Agee_da_ricontrollare:
+            # st.write(f"{len(num_O_Agee_da_ricontrollare)} ordini su {unique_O_count_agee}")
+
+            # Create a DataFrame with unique orders
+            agee_orders_dr_df = pd.DataFrame({'Name': num_O_Agee_da_ricontrollare})
+            
+            # Handle pagination for AGEE orders
+            agee_paginated_orders = handle_paginated_section(
+                agee_orders_dr_df,
+                unique_O_count_agee,
+                'agee',
+                "Ordini da controllare AGEE"
+            )
+
+            for name in agee_paginated_orders["Name"]:
                 name_df = agee_df[agee_df['Name'] == name]
                 st.session_state.numeri_pagamenti = []
 
