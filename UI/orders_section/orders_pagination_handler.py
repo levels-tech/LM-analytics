@@ -47,14 +47,14 @@ def render_pagination_controls(total_items, section_key):
     with col1:
         if st.button("⏮️ Prima", 
                     disabled=current_page == 1,
-                    key=f'first_{section_key}'):
+                    key=f'widget_first_{section_key}'):
             st.session_state[f'current_page_{section_key}'] = 1
             st.rerun()
     
     with col2:
         if st.button("◀️", 
                     disabled=current_page == 1,
-                    key=f'prev_{section_key}'):
+                    key=f'widget_prev_{section_key}'):
             st.session_state[f'current_page_{section_key}'] -= 1
             st.rerun()
     
@@ -64,14 +64,14 @@ def render_pagination_controls(total_items, section_key):
     with col4:
         if st.button("▶️", 
                     disabled=current_page == total_pages,
-                    key=f'next_{section_key}'):
+                    key=f'widget_next_{section_key}'):
             st.session_state[f'current_page_{section_key}'] += 1
             st.rerun()
     
     with col5:
         if st.button("⏭️ Ultima", 
                     disabled=current_page == total_pages,
-                    key=f'last_{section_key}'):
+                    key=f'widget_last_{section_key}'):
             st.session_state[f'current_page_{section_key}'] = total_pages
             st.rerun()
 
