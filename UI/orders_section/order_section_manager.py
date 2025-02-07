@@ -224,9 +224,6 @@ class MethodHandler:
                 ## Non permette doppio assegnamento di pagamenti a ordini
                 if matching_name != self.name:
                     st.warning(f"Il pagamento {numero} è già stato assegnato all'ordine {matching_name}")
-            else:
-                # Assign the payment to pagamenti_da_aggiungere if it hasn't been assigned
-                st.session_state.pagamenti_da_aggiungere_lil[numero] = self.name
     
     def _handle_multiple_payment_assignments_agee(self):
         # Check for already assigned payments
@@ -237,10 +234,6 @@ class MethodHandler:
                 ## Non permette doppio assegnamento di pagamenti a ordini
                 if matching_name != self.name:
                     st.warning(f"Il pagamento {numero} è già stato assegnato all'ordine {matching_name}")
-            else:
-                # Assign the payment to pagamenti_da_aggiungere if it hasn't been assigned
-                st.session_state.pagamenti_da_aggiungere_agee[numero] = self.name
-    
 
 
 
