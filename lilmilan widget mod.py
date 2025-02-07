@@ -420,13 +420,13 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             update_handler.needs_confirmation()
                         
                         if f'success_{name}' in st.session_state and st.session_state[f'success_{name}']:
-                            update_handler.show_success()
+                            update_handler.show_success_lil()
                         
                         if f'needs_aggiungi_check_{name}' in st.session_state and st.session_state[f'needs_aggiungi_check_{name}']:
-                            update_handler.needs_double_check()
+                            update_handler.needs_double_check_lil(st.session_state.pagamenti_unmatched, last_index_lil)
                         
                         if f'success_aggiunto_{name}' in st.session_state and st.session_state[f'success_aggiunto_{name}']:
-                            update_handler.double_check_success()
+                            update_handler.double_check_success_agee()
 
                         st.session_state.orders_count = update_handler.get_orders_count()
                     # ///////////// FINE CHUNK 9 //////////////
@@ -497,13 +497,13 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                         update_handler_agee.needs_confirmation()
                     
                     if f'success_{name}' in st.session_state and st.session_state[f'success_{name}']:
-                        update_handler_agee.show_success()
+                        update_handler_agee.show_success_agee()
                     
                     if f'needs_aggiungi_check_{name}' in st.session_state and st.session_state[f'needs_aggiungi_check_{name}']:
-                        update_handler_agee.needs_double_check()
+                        update_handler_agee.needs_double_check_agee(st.session_state.pagamenti_unmatched, last_index_agee)
                     
                     if f'success_aggiunto_{name}' in st.session_state and st.session_state[f'success_aggiunto_{name}']:
-                        update_handler_agee.double_check_success()
+                        update_handler_agee.double_check_success_agee()
 
                     st.session_state.orders_count = update_handler_agee.get_orders_count()                
                                 
