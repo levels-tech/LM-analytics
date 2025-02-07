@@ -40,6 +40,10 @@ def get_order_total(df, nome_ordine):
         return False, 0
 
 def render_navigation(lil_df, agee_df):
+
+    st.write(st.session_state.orders_count)
+    st.write(st.session_state.pagamenti_da_aggiungere_lil)
+
     """Renders the navigation buttons for different sections"""
     col1, col2, col3 = st.columns(3)
     

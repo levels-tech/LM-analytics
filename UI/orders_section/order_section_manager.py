@@ -326,6 +326,7 @@ class UpdateHandler:
         self.orders_count = orders_count
         self.columns_to_edit = columns_to_edit
         self.double_payment_method = double_payment_method
+        self._success_processed = False  # New flag to track if success has been processed
 
 
     def update_submitted(self, nan, selected_rows, check, importo_pagato, pagamenti):
@@ -430,6 +431,7 @@ class UpdateHandler:
         updated_df, _ = update_df(st.session_state.processed_data, self.new_values, self.name)
         st.session_state.processed_data = updated_df
         st.session_state.saved_updates.add(self.name)
+        self.orders_count += 1
         st.session_state[f'success_{self.name}'] = True
 
         auto_save_on_change()
@@ -533,7 +535,6 @@ class UpdateHandler:
 
     def show_success(self):
         st.success("Modifiche salvate con successo!")
-        self.orders_count += 1
         
         for n in st.session_state.numeri_pagamenti:
             if n not in st.session_state.pagamenti_da_aggiungere_lil.keys():
