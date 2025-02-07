@@ -201,10 +201,9 @@ class MethodHandler:
         
         if self.brand == "lil":
             self._handle_multiple_payment_assignments_lil()
-
-        elif self.brand == "agee":
+        else:
             self._handle_multiple_payment_assignments_agee()
-        
+
         # Display selected payments info
         importo_pagato = sum_importi
         st.write(f"Cambia il **Total** con **{importo_pagato:.2f}**")
@@ -227,7 +226,7 @@ class MethodHandler:
             else:
                 # Assign the payment to pagamenti_da_aggiungere if it hasn't been assigned
                 st.session_state.pagamenti_da_aggiungere_lil[numero] = self.name
-    
+
     def _handle_multiple_payment_assignments_agee(self):
         # Check for already assigned payments
         for numero in st.session_state.numeri_pagamenti:
@@ -337,13 +336,15 @@ BLOCCO 5: Gestione Aggiornamenti
 """
 
 class UpdateHandler:
-    def __init__(self, name, name_df, new_values, orders_count, columns_to_edit, double_payment_method):
+    def __init__(self, name, name_df, new_values, orders_count, columns_to_edit, double_payment_method, brand):
         self.name = name
         self.name_df = name_df
         self.new_values = new_values
         self.orders_count = orders_count
         self.columns_to_edit = columns_to_edit
         self.double_payment_method = double_payment_method
+        self._success_processed = False  # New flag to track if success has been processed
+        self.brand = brand
 
 
     def update_submitted(self, nan, selected_rows, check, importo_pagato, pagamenti):
@@ -539,8 +540,7 @@ class UpdateHandler:
 
                             st.session_state.metodo_pagamento = None
                             selected_rows = []
-
-
+        
     def needs_double_check_agee(self, pagamenti, last_index_agee):
         name = self.name
 
@@ -625,7 +625,7 @@ class UpdateHandler:
                             st.session_state[f'success_aggiunto_{name}'] = True
 
                             st.session_state.metodo_pagamento = None
-                            selected_rows = []
+                            selected_rows = []    
 
 
     def needs_confirmation(self):
@@ -643,7 +643,14 @@ class UpdateHandler:
         for n in st.session_state.numeri_pagamenti:
             if n not in st.session_state.pagamenti_da_aggiungere_lil.keys():
                 st.session_state.pagamenti_da_aggiungere_lil[n] = self.name
-    
+
+
+    def double_check_success_lil(self):
+        st.success("Aggiunto con successo!")
+        for n in st.session_state.numeri_pagamenti:
+            if n not in st.session_state.pagamenti_da_aggiungere_lil.keys():
+                st.session_state.pagamenti_da_aggiungere_lil[n] = self.name
+
     def show_success_agee(self):
         st.success("Modifiche salvate con successo!")
         
@@ -652,12 +659,6 @@ class UpdateHandler:
                 st.session_state.pagamenti_da_aggiungere_agee[n] = self.name
 
 
-    def double_check_success_lil(self):
-        st.success("Aggiunto con successo!")
-        for n in st.session_state.numeri_pagamenti:
-            if n not in st.session_state.pagamenti_da_aggiungere_lil.keys():
-                st.session_state.pagamenti_da_aggiungere_lil[n] = self.name
-    
     def double_check_success_agee(self):
         st.success("Aggiunto con successo!")
         for n in st.session_state.numeri_pagamenti:

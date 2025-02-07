@@ -376,7 +376,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     # ///////////// CHUNK 6 //////////////
                     # GESTISCE IL CASO DI ORDINI PAGATI CON QROMO (O SATISPAY OFFLINE) (SINGOLI O MULTIPLI CHE SIANO)
 
-                    method_handler = MethodHandler(st.session_state.pagamenti_unmatched, name_df, name)
+                    method_handler = MethodHandler(st.session_state.pagamenti_unmatched, name_df, name, "lil")
                     selected_rows, importo_pagato = method_handler.handle_method(metodo)
 
                     # ///////////// FINE CHUNK 7 //////////////
@@ -416,13 +416,13 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                             update_handler.needs_confirmation()
                         
                         if f'success_{name}' in st.session_state and st.session_state[f'success_{name}']:
-                            update_handler.show_success()
+                            update_handler.show_success_agee()
                         
                         if f'needs_aggiungi_check_{name}' in st.session_state and st.session_state[f'needs_aggiungi_check_{name}']:
-                            update_handler.needs_double_check()
+                            update_handler.needs_double_check_lil(st.session_state.pagamenti_unmatched, last_index_lil)
                         
                         if f'success_aggiunto_{name}' in st.session_state and st.session_state[f'success_aggiunto_{name}']:
-                            update_handler.double_check_success()
+                            update_handler.double_check_success_agee()
 
                         st.session_state.orders_count = update_handler.get_orders_count()
                     # ///////////// FINE CHUNK 9 //////////////
@@ -475,7 +475,7 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                     st.session_state['cambiare_metodo'] = False
 
                     
-                    method_handler_agee = MethodHandler(st.session_state.pagamenti_unmatched, name_df, name)
+                    method_handler_agee = MethodHandler(st.session_state.pagamenti_unmatched, name_df, name, "agee")
                     selected_rows, importo_pagato = method_handler_agee.handle_method(metodo)
 
                     modify_order_selector_agee = ModifyOrderSelector(name, name_df, PAYMENTS, importo_pagato, 
@@ -493,13 +493,13 @@ if st.session_state.processed_data is not None and st.session_state.pagamenti is
                         update_handler_agee.needs_confirmation()
                     
                     if f'success_{name}' in st.session_state and st.session_state[f'success_{name}']:
-                        update_handler_agee.show_success()
+                        update_handler_agee.show_success_agee()
                     
                     if f'needs_aggiungi_check_{name}' in st.session_state and st.session_state[f'needs_aggiungi_check_{name}']:
-                        update_handler_agee.needs_double_check()
+                        update_handler_agee.needs_double_check_agee(st.session_state.pagamenti_unmatched, last_index_agee)
                     
                     if f'success_aggiunto_{name}' in st.session_state and st.session_state[f'success_aggiunto_{name}']:
-                        update_handler_agee.double_check_success()
+                        update_handler_agee.double_check_success_agee()
 
                     st.session_state.orders_count = update_handler_agee.get_orders_count()                
                                 
