@@ -337,6 +337,7 @@ class UpdateHandler:
         self.orders_count = orders_count
         self.columns_to_edit = columns_to_edit
         self.double_payment_method = double_payment_method
+        self._success_processed = False  # New flag to track if success has been processed
 
 
     def update_submitted(self, nan, selected_rows, check, importo_pagato, pagamenti):
