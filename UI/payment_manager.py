@@ -73,8 +73,6 @@ class PaymentManager:
         """
         Verifica se si può procedere alla generazione dell'Excel
         """
-        st.write("Total_to_check:", len(self.get_payments_to_display()))
-        st.write("processed_count: ", self.get_processed_count())
         total_to_check = len(self.get_payments_to_display())
         return self.get_processed_count() >= total_to_check
     
