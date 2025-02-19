@@ -434,7 +434,7 @@ def validate_payment_fields(values, total_quantity=1):
         0: ("Numero Ordine", lambda x: x is not None and str(x).strip()),
         1: ("Data", lambda x: x is not None and str(x).strip()),
         3: ("SKU", lambda x: validate_lineitem_field(x, total_quantity, lambda i: len(str(i)) == 12 and str(i).isdigit())),
-        4: ("Quantità", lambda x: validate_lineitem_field(x, total_quantity, lambda i: i is not None and int(i) > 0)),
+        4: ("Quantità", lambda x: validate_lineitem_field(x, total_quantity, lambda i: i is not None)),
         6: ("Shipping Country", lambda x: x is not None and len(str(x)) == 2 and str(x).isalpha()),
         8: ("Location", lambda x: x is not None and str(x).strip()),
         9: ("Brand", lambda x: x is not None and str(x).strip())
