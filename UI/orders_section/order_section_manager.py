@@ -622,91 +622,6 @@ class UpdateHandler:
                             selected_rows = []    
 
 
-    def needs_double_check_agee(self, pagamenti, last_index_agee):
-        name = self.name
-
-        diff_values = st.session_state[f'additional_values_add_{name}']['difference']
-        old_payment_method = st.session_state[f'additional_values_add_{name}']['old_payment_method']
-        numero_pagamento = st.session_state[f'additional_values_add_{name}']['numero']
-
-        if "Cash" in old_payment_method:
-            st.warning(f"Mancano {diff_values:.2f} euro per quest'ordine. Aggiungere una riga in cui {diff_values:.2f} euro sono stati pagati con Cash? Altrimenti saltare questo step e andare avanti.")
-
-            with st.form(f"add_row_cash_{name}"): 
-                # Submit button after all other form elements
-                confirm_submit = st.form_submit_button("Aggiungere")
-                
-                if confirm_submit:
-                    new_result = add_row(st.session_state.processed_data, [diff_values], ["Cash"], name, last_index_agee)
-                    st.session_state.processed_data = new_result
-                    st.session_state.saved_updates.add(name)
-                    last_index_agee += 1
-
-                    st.session_state[f'success_{name}'] = True
-                    st.session_state[f'success_aggiunto_{name}'] = True
-        
-        else:
-            payments_used = list(map(str.strip, old_payment_method.split('+')))
-            st.warning(f"Mancano {diff_values:.2f}€ per quest'ordine: aggiungere altri pagamenti? Scegliere tra i seguenti, altrimenti saltare questo step e andare avanti.")
-            pagamenti_to_show = pagamenti[(pagamenti['CHECK'] != "VERO") 
-                                        & (pagamenti["Importo Pagato"] <= diff_values) 
-                                        & (pagamenti["Metodo"].isin(payments_used))
-                                        & (pagamenti["Numero Pagamento"] != numero_pagamento)]
-            pagamenti_to_show = pagamenti_to_show.sort_values(by = "Importo Pagato", ascending = False)
-            
-            ## TODO: Checkbox simile a quella di Qromo si può gestire con una funzione?
-            ## TODO: Mostrare metodo di pagamento (Qromo / Satispay tra parentesi accanto al pagamento da selezionare)
-            if not pagamenti_to_show.empty:
-                st.write("Selezionare uno o più pagamenti corrispondenti all'ordine:")
-                selected_rows = []
-                importi_pagati = []
-                metodi = []
-
-                for index, row in pagamenti_to_show.iterrows():
-                    unique_key = f"widget_add_pagamenti_{name}_{index}"
-                    if st.checkbox(f"{row['Importo Pagato']}€ pagati alle {row['Data']} con {row['Metodo']}", key=unique_key):
-                        selected_rows.append(row)
-                        importi_pagati.append(row["Importo Pagato"])
-                        st.session_state.numeri_pagamenti.append(row["Numero Pagamento"])
-                        if row["Metodo"] not in metodi:
-                            metodi.append(row["Metodo"]) 
-
-                        st.session_state.metodo_pagamento = metodi
-                        # proceed = True
-
-                # Handle selected payments
-                if len(selected_rows) > 0:
-                    # Check for already assigned payments
-                    for numero in st.session_state.numeri_pagamenti:                                    
-                        if numero not in st.session_state.pagamenti_da_aggiungere_agee.keys():
-                            st.session_state.pagamenti_da_aggiungere_agee[numero] = name
-                        else:
-                            matching_name = st.session_state.pagamenti_da_aggiungere_agee[numero]
-                            if matching_name != name:
-                                st.warning(f"Il pagamento {numero} è già stato assegnato all'ordine {matching_name}")
-
-                    # Display selected payments info
-                    importo_pagato = sum(importi_pagati)
-                    # st.write("Hai selezionato:")
-                    # selected_df = pd.DataFrame(selected_rows)
-                    # st.write(selected_df[["Metodo", "Data", "Numero Pagamento", "Importo Pagato"]])
-
-                    with st.form(f"add_row_other_{name}"): 
-                        # Submit button after all other form elements
-                        confirm_submit = st.form_submit_button("Aggiungere")
-                        
-                        if confirm_submit:
-                            new_result = add_row(st.session_state.processed_data, importi_pagati, st.session_state.metodo_pagamento, name, last_index_agee)
-                            st.session_state.processed_data = new_result
-                            st.session_state.saved_updates.add(name)
-                            last_index_agee += 1
-
-
-                            st.session_state[f'success_{name}'] = True
-                            st.session_state[f'success_aggiunto_{name}'] = True
-
-                            st.session_state.metodo_pagamento = None
-                            selected_rows = []
 
 
     def needs_confirmation(self):
@@ -739,19 +654,6 @@ class UpdateHandler:
             if n not in st.session_state.pagamenti_da_aggiungere_lil.keys():
                 st.session_state.pagamenti_da_aggiungere_lil[n] = self.name
 
-    def show_success_agee(self):
-        st.success("Modifiche salvate con successo!")
-        
-        for n in st.session_state.numeri_pagamenti:
-            if n not in st.session_state.pagamenti_da_aggiungere_agee.keys():
-                st.session_state.pagamenti_da_aggiungere_agee[n] = self.name
-
-
-    def double_check_success_agee(self):
-        st.success("Aggiunto con successo!")
-        for n in st.session_state.numeri_pagamenti:
-            if n not in st.session_state.pagamenti_da_aggiungere_agee.keys():
-                st.session_state.pagamenti_da_aggiungere_agee[n] = self.name
     
     def double_check_success_agee(self):
         st.success("Aggiunto con successo!")
