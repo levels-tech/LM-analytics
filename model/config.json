@@ -1,0 +1,33 @@
+{
+    "files_required_columns":{
+        "orders":  ["Name", "Paid at", "Payment Method", "Payment References", "Total", "Subtotal", "Location", "Shipping Method", "Shipping Country",
+                    "Shipping", "Discount Code", "Discount Amount", "Lineitem name", "Lineitem quantity", "Lineitem compare at price",
+                    "Lineitem price", "Outstanding Balance", "Refunded Amount"],
+
+        "payments":{
+            "Bonifici": ["Data", "Importo", "Dettagli", "Operazione"],
+            "Paypal": ["Data","N° ordine commerciante", "Lordo"],
+            "Qromo": ["Data", "Stato", "Importo €", "Importo rimborsato €", "ID"],
+            "Satispay": ["payment_date", "payment_type", "total_amount", "payment_uid", "description"],
+            "Scalapay": ["Data acquisto/rimborso", "Merchant ID", "Import lordo"],
+            "Shopify": ["Transaction Date", "Order", "Amount"]
+        }
+    },
+    
+    "payments_date_columns": {
+        "orders": {
+            "LIL": "Paid at",
+            "AGEE": "Paid at"
+        },
+
+        "payments":{
+            "Bonifici": "Data",
+            "Paypal": "Data",
+            "Qromo": "Data",
+            "Satispay": "payment_date",
+            "Scalapay": "Data acquisto/rimborso",
+            "Shopify AGEE": "Transaction Date",
+            "Shopify LIL": "Transaction Date"
+        }
+    }
+}
